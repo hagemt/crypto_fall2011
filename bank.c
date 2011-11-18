@@ -11,7 +11,6 @@
 
 /* Readline includes */
 #include <readline/readline.h>
-#include <readline/history.h>
 
 /* Local includes */
 #include "banking_constants.h"
@@ -86,12 +85,11 @@ main(int argc, char ** argv)
   #endif
 
   /* Issue an interactive prompt, only quit on signal */
-  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT))) {
+  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
     if (validate(in, &cmd)) {
       /* Catch invalid commands */
       fprintf(stderr, "ERROR: invalid command '%s'\n", in);
     } else {
-      add_history(in);
       caught_signal = invoke(in, cmd);
     }
     free(in);

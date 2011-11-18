@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <readline/history.h>
 #include <readline/readline.h>
 
 #include "banking_constants.h"
@@ -58,13 +57,11 @@ main(int argc, char ** argv)
   }
 
   /* Issue an interactive prompt, terminate only on failure */
-  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT))) {
+  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
     /* Read in a line, then attempt to associate it with a command */
     if (validate(in, &cmd)) {
       fprintf(stderr, "ERROR: invalid command: '%s'\n", in);
     } else {
-      /* Add valid commands to the shell history */
-      add_history(in);
       /* Set up to signal based on the command's invocation */
       caught_signal = invoke(in, cmd);
     }
