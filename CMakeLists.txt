@@ -9,10 +9,6 @@ configure_file(
   "${PROJECT_SOURCE_DIR}/banking_constants.h.in"
   "${PROJECT_BINARY_DIR}/banking_constants.h"
 )
-configure_file(
-  "${PROJECT_SOURCE_DIR}/banking_commands.h.in"
-  "${PROJECT_BINARY_DIR}/banking_commands.h"
-)
 include_directories("${PROJECT_BINARY_DIR}")
 
 option(BUILD_ATM "Produce binaries for the ATM" ON)
