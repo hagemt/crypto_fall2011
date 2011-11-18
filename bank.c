@@ -14,10 +14,22 @@
 #include <readline/history.h>
 
 /* Local includes */
-#define MAX_CONNECTIONS 5
+#include "banking_constants.h"
 #define USE_BALANCE
 #define USE_DEPOSIT
-#include "commands.h"
+#include "banking_commands.h"
+
+void
+balance_command(char * cmd)
+{
+  return;
+}
+
+void
+deposit_command(char * cmd)
+{
+  return;
+}
 
 struct account_t {
   char * name;
@@ -27,68 +39,68 @@ struct account_t {
 int
 main(int argc, char ** argv)
 {
-  int sock;
-  char * cmd_buffer;
-  long int port_number;
-  struct addrinfo hints, * addr_info;
-  socklen_t sock_len = sizeof(struct addrinfo);
+  int ssock, csock;
+  char * cmd;
+  long int port;
+  struct sockaddr_in local_addr;
+  socklen_t addr_len = sizeof(local_addr);
   /* Sanitize input */
   if (argc != 2) {
-    fprintf(stderr, "USAGE: %s port_number\n", argv[0]);
+    fprintf(stderr, "USAGE: %s port\n", argv[0]);
     return EXIT_FAILURE;
   }
+
   /* Read the port number as the singular argument */
-  port_number = strtol(argv[1], &cmd_buffer, 10);
+  port = strtol(argv[1], &cmd, 10);
   #ifndef NDEBUG
-  if (cmd_buffer == NULL || *cmd_buffer != '\0') {
-    fprintf("WARNING: ignoring extraneous '%s'\n", cmd_buffer);
+  if (cmd == NULL || *cmd != '\0') {
+    fprintf(stderr, "WARNING: ignoring extraneous '%s'\n", cmd);
   }
-  printf("INFO: will attempt to listen on port %l\n", port_number)
+  printf("INFO: will attempt to listen on port %li\n", port);
   #endif
-  if (port_number < 0x400 || port_number > 0xFFFF) {
+  if (port < 0x400 || port > 0xFFFF) {
     fprintf(stderr, "ERROR: port '%s' out of range [1024, 65535]\n", argv[1]);
     return EXIT_FAILURE;
   }
-  /* Set up address information */
-  memset(&hints, 0, sock_len);
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-  if (getaddrinfo(LOCAL_ADDRESS, NULL, &hints, &addr_info)) {
-    fprintf(stderr, "ERROR: unable to acertain '%s'\n", LOCAL_ADDRESS);
-    return EXIT_FAILURE;
-  }
-  addr_info->sin_port = htonl(port_number);
-  /* Open socket, bind, and listen */
+
+  /* Set up address information, open socket, bind, and listen */
+  local_addr.sin_family = AF_INET;
+  local_addr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
+  local_addr.sin_port = htonl(port);
   // TODO intelligent protocol? (tcp)
-  if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+  if ((ssock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
     fprintf(stderr, "ERROR: unable to open socket\n");
     return EXIT_FAILURE;
   }
-  if (bind(sock, (struct sockaddr *)addr_info, sock_len)) {
+  if (bind(ssock, (struct sockaddr *)(&local_addr), addr_len)) {
     fprintf(stderr, "ERROR: unable to bind socket\n");
     return EXIT_FAILURE;
   }
-  if (listen(sock, MAX_CONNECTIONS)) {
+  if (listen(ssock, MAX_CONNECTIONS)) {
     fprintf(stderr, "ERROR: unable to listen on socket\n");
     return EXIT_FAILURE;
   }
   #ifndef NDEBUG
-  printf("INFO: listening on port %l\n", port_number);
+  printf("INFO: listening on port %li\n", port);
   #endif
-  while ((cmd_buffer = readline(PROMPT))) {
-    if (validate(cmd)) { /* Catch invalid commands */
-      fprintf(stderr, "ERROR: invalid command ''", )
+
+  /* Issue an interactive prompt */
+  while ((cmd = readline(PROMPT))) {
+    if (validate(cmd)) {
+      /* Catch invalid commands */
+      fprintf(stderr, "ERROR: invalid command '%s'\n", cmd);
     } else {
       add_history(cmd);
       invoke(cmd);
     }
-    free(cmd_buffer);
-    cmd_buffer = NULL;
+    free(cmd);
+    cmd = NULL;
   }
+
   /* Cleanup */
-  freeaddrinfo(addr_info);
-  if (close(sock)) {
-    fprintf(stderr, "WARN: unable to close socket");
+  if (close(ssock)) {
+    fprintf(stderr, "WARN: unable to close socket\n");
   }
+  printf("\n");
   return EXIT_SUCCESS;
 }
