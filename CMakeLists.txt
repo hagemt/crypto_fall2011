@@ -2,9 +2,16 @@ cmake_minimum_required(VERSION 2.8)
 
 project(CryptoFinal C)
 
+set(BANKING_MAJOR_VERSION 0)
+set(BANKING_MINOR_VERSION 1)
+
 configure_file(
   "${PROJECT_SOURCE_DIR}/banking_constants.h.in"
   "${PROJECT_BINARY_DIR}/banking_constants.h"
+)
+configure_file(
+  "${PROJECT_SOURCE_DIR}/banking_commands.h.in"
+  "${PROJECT_BINARY_DIR}/banking_commands.h"
 )
 include_directories("${PROJECT_BINARY_DIR}")
 
@@ -16,7 +23,7 @@ option(BUILD_TESTING "Produce testing harnesses" OFF)
 if(BUILD_ATM OR BUILD_BANK)
   find_library(READLINE_LIBRARY_PATH readline)
   if(READLINE_LIBRARY_PATH)
-    set(EXTRA_LIBS ${EXTRA_LIBS} READLINE_LIBRARY_PATH)
+    set(EXTRA_LIBS ${EXTRA_LIBS} ${READLINE_LIBRARY_PATH})
   else(READLINE_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find libreadline")
   endif(READLINE_LIBRARY_PATH)
@@ -30,7 +37,7 @@ endif(BUILD_ATM)
 if(BUILD_BANK)
   find_library(SQLITE_LIBRARY_PATH sqlite)
   if(SQLITE_LIBRARY_PATH)
-    set(EXTRA_LIBS ${EXTRA_LIBS} SQLITE_LIBRARY_PATH)
+    set(EXTRA_LIBS ${EXTRA_LIBS} ${SQLITE_LIBRARY_PATH})
   else(SQLITE_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find libsqlite")
   endif(SQLITE_LIBRARY_PATH)
@@ -41,7 +48,7 @@ endif(BUILD_BANK)
 if(BUILD_PROXY)
   find_library(SSL_LIBRARY_PATH ssl)
   if(SSL_LIBRARY_PATH)
-    set(EXTRA_LIBS ${EXTRA_LIBS} SSL_LIBRARY_PATH)
+    set(EXTRA_LIBS ${EXTRA_LIBS} ${SSL_LIBRARY_PATH})
   else(SSL_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find libssl")
   endif(SSL_LIBRARY_PATH)
