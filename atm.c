@@ -14,41 +14,42 @@
 #define USE_TRANSFER
 #include "banking_commands.h"
 
-void
+int
 login_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
-void
+int
 balance_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
-
-void
+int
 withdraw_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
-void
+int
 logout_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
-void
+int
 transfer_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
 int
 main(int argc, char ** argv)
 {
-  char * cmd;
+  char * in;
+  int caught_signal;
+  command cmd;
 
   /* Input sanitation */
   if (argc != 2) {
@@ -56,16 +57,19 @@ main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
 
-  /* Issue an interactive prompt */
-  while ((cmd = readline(PROMPT))) {
-    if (validate(cmd)) {
-      fprintf(stderr, "ERROR: invalid command: '%s'\n", cmd);
+  /* Issue an interactive prompt, terminate only on failure */
+  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT))) {
+    /* Read in a line, then attempt to associate it with a command */
+    if (validate(in, &cmd)) {
+      fprintf(stderr, "ERROR: invalid command: '%s'\n", in);
     } else {
-      add_history(cmd);
-      invoke(cmd);
+      /* Add valid commands to the shell history */
+      add_history(in);
+      /* Set up to signal based on the command's invocation */
+      caught_signal = invoke(in, cmd);
     }
-    free(cmd);
-    cmd = NULL;
+    free(in);
+    in = NULL;
   }
 
   /* Cleanup */

@@ -19,16 +19,16 @@
 #define USE_DEPOSIT
 #include "banking_commands.h"
 
-void
+int
 balance_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
-void
+int
 deposit_command(char * cmd)
 {
-  return;
+  return 0;
 }
 
 struct account_t {
@@ -39,8 +39,9 @@ struct account_t {
 int
 main(int argc, char ** argv)
 {
-  int ssock, csock;
-  char * cmd;
+  int ssock, csock, caught_signal;
+  char * in;
+  command cmd;
   long int port;
   struct sockaddr_in local_addr;
   socklen_t addr_len = sizeof(local_addr);
@@ -51,10 +52,10 @@ main(int argc, char ** argv)
   }
 
   /* Read the port number as the singular argument */
-  port = strtol(argv[1], &cmd, 10);
+  port = strtol(argv[1], &in, 10);
   #ifndef NDEBUG
-  if (cmd == NULL || *cmd != '\0') {
-    fprintf(stderr, "WARNING: ignoring extraneous '%s'\n", cmd);
+  if (in == NULL || *in != '\0') {
+    fprintf(stderr, "WARNING: ignoring extraneous '%s'\n", in);
   }
   printf("INFO: will attempt to listen on port %li\n", port);
   #endif
@@ -84,17 +85,17 @@ main(int argc, char ** argv)
   printf("INFO: listening on port %li\n", port);
   #endif
 
-  /* Issue an interactive prompt */
-  while ((cmd = readline(PROMPT))) {
-    if (validate(cmd)) {
+  /* Issue an interactive prompt, only quit on signal */
+  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT))) {
+    if (validate(in, &cmd)) {
       /* Catch invalid commands */
-      fprintf(stderr, "ERROR: invalid command '%s'\n", cmd);
+      fprintf(stderr, "ERROR: invalid command '%s'\n", in);
     } else {
-      add_history(cmd);
-      invoke(cmd);
+      add_history(in);
+      caught_signal = invoke(in, cmd);
     }
-    free(cmd);
-    cmd = NULL;
+    free(in);
+    in = NULL;
   }
 
   /* Cleanup */

@@ -7,46 +7,47 @@
 #include "banking_constants.h"
 
 #ifdef USE_LOGIN
-void
+int
 login_command(char *);
 #endif
 
 #ifdef USE_BALANCE
-void
+int
 balance_command(char *);
 #endif
 
 #ifdef USE_WITHDRAW
-void
+int
 withdraw_command(char *);
 #endif
 
 #ifdef USE_LOGOUT
-void
+int
 logout_command(char *);
 #endif
 
 #ifdef USE_TRANSFER
-void
+int
 transfer_command(char *);
 #endif
 
-void
-quit_command(char * cmd)
-{
-  return;
-};
+#ifdef USE_DEPOSIT
+int
+deposit_command(char *);
+#endif
+
+typedef int (*command)(char *);
 
 struct command_t
 {
   char * name;
-  void (* function)(char *);
+  command function;
   size_t length;
 };
 
 #define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) }
 
-static struct command_t commands[] =
+const struct command_t commands[] =
 {
   #ifdef USE_LOGIN
   INIT_COMMAND(login),
@@ -63,23 +64,32 @@ static struct command_t commands[] =
   #ifdef USE_TRANSFER
   INIT_COMMAND(transfer),
   #endif
-  INIT_COMMAND(quit)
+  #ifdef USE_DEPOSIT
+  INIT_COMMAND(deposit),
+  #endif
+  { "quit", NULL, 5 }
 };
 
 int
-validate(const char * const cmd)
+validate(const char * const cmd, command * fun)
 {
-  size_t i;
   int invalid;
-  for (i = 0, invalid = 1; invalid && i < sizeof(commands); ++i) {
+  size_t i = 0;
+  /* Interate through all commands with valid functions */
+  while (commands[i].function) {
     assert(commands[i].length <= MAX_COMMAND_LENGTH);
+    /* If we find a match, break immediately; otherwise, continue */
     invalid = strncmp(commands[i].name, cmd, commands[i].length);
+    if (invalid) { ++i; } else { break; }
   }
-  return invalid;
+  /* The function is valid, or may be NULL for the final command */
+  *fun = commands[i].function;
+  /* Non-zero return value iff invalid and not final command */
+  return invalid && strncmp(commands[i].name, cmd, commands[i].length);
 }
 
-void
-invoke(char * const cmd)
+int
+invoke(char * const cmd, command fun)
 {
   size_t i;
   char * args = cmd;
@@ -90,12 +100,8 @@ invoke(char * const cmd)
       i = MAX_COMMAND_LENGTH;
     }
   }
-  /* Invoke the target command TODO use validate to return fp? */
-  for (i = 0; i < sizeof(commands); ++i) {
-    if (!strncmp(commands[i].name, cmd, commands[i].length)) {
-      (commands[i].function)(args);
-    }
-  }
+  /* Invoke the target command provided it is valid */
+  return (fun == NULL) || fun(args);
 }
 
 #endif
