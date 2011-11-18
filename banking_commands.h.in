@@ -1,4 +1,10 @@
+#ifndef BANKING_COMMANDS_H
+#define BANKING_COMMANDS_H
+
+#include <assert.h>
 #include <string.h>
+
+#include "banking_constants.h"
 
 #ifdef USE_LOGIN
 void
@@ -66,7 +72,30 @@ validate(const char * const cmd)
   size_t i;
   int invalid;
   for (i = 0, invalid = 1; invalid && i < sizeof(commands); ++i) {
+    assert(commands[i].length <= MAX_COMMAND_LENGTH);
     invalid = strncmp(commands[i].name, cmd, commands[i].length);
   }
   return invalid;
 }
+
+void
+invoke(char * const cmd)
+{
+  size_t i;
+  char * args = cmd;
+  /* Safely probe past spaces */
+  for (i = 0; *args != '\0' && i < MAX_COMMAND_LENGTH; ++i, ++args) {
+    if (*args == ' ') {
+      *args = '\0';
+      i = MAX_COMMAND_LENGTH;
+    }
+  }
+  /* Invoke the target command TODO use validate to return fp? */
+  for (i = 0; i < sizeof(commands); ++i) {
+    if (!strncmp(commands[i].name, cmd, commands[i].length)) {
+      (commands[i].function)(args);
+    }
+  }
+}
+
+#endif

@@ -1,1 +1,15 @@
-#define PROMPT "[atorm0] $ "
+#ifndef BANKING_CONSTANTS_H
+#define BANKING_CONSTANTS_H
+
+#define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
+#define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
+
+#define LOCAL_ADDRESS "127.0.0.1"
+
+#define MAX_COMMAND_LENGTH 80
+
+#define MAX_CONNECTIONS 5
+
+#define PROMPT "[secure-banking] $ "
+
+#endif
