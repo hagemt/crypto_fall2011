@@ -1,17 +1,20 @@
+/* Standard includes */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+/* Readline includes */
 #include <readline/readline.h>
 
+/* Local includes */
 #include "banking_constants.h"
-
 #define USE_LOGIN
 #define USE_BALANCE
 #define USE_WITHDRAW
 #define USE_LOGOUT
 #define USE_TRANSFER
 #include "banking_commands.h"
+#include "socket_utils.h"
 
 int
 login_command(char * cmd)
@@ -47,12 +50,16 @@ int
 main(int argc, char ** argv)
 {
   char * in;
-  int caught_signal;
   command cmd;
+  int csock, caught_signal;
 
   /* Input sanitation */
   if (argc != 2) {
     fprintf(stderr, "USAGE: %s port_num\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  if ((csock = init_client_socket(argv[1])) < 0) {
+    fprintf(stderr, "FATAL: proxy unreachable\n");
     return EXIT_FAILURE;
   }
 
@@ -65,11 +72,12 @@ main(int argc, char ** argv)
       /* Set up to signal based on the command's invocation */
       caught_signal = invoke(in, cmd);
     }
+    /* Cleanup from here down */
     free(in);
     in = NULL;
   }
 
-  /* Cleanup */
+  destroy_socket(csock);
   printf("\n");
   return EXIT_SUCCESS;
 }
