@@ -1,0 +1,72 @@
+#include <string.h>
+
+#ifdef USE_LOGIN
+void
+login_command(char *);
+#endif
+
+#ifdef USE_BALANCE
+void
+balance_command(char *);
+#endif
+
+#ifdef USE_WITHDRAW
+void
+withdraw_command(char *);
+#endif
+
+#ifdef USE_LOGOUT
+void
+logout_command(char *);
+#endif
+
+#ifdef USE_TRANSFER
+void
+transfer_command(char *);
+#endif
+
+void
+quit_command(char * cmd)
+{
+  return;
+};
+
+struct command_t
+{
+  char * name;
+  void (* function)(char *);
+  size_t length;
+};
+
+#define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) }
+
+static struct command_t commands[] =
+{
+  #ifdef USE_LOGIN
+  INIT_COMMAND(login),
+  #endif
+  #ifdef USE_BALANCE
+  INIT_COMMAND(balance),
+  #endif
+  #ifdef USE_WITHDRAW
+  INIT_COMMAND(withdraw),
+  #endif
+  #ifdef USE_LOGOUT
+  INIT_COMMAND(logout),
+  #endif
+  #ifdef USE_TRANSFER
+  INIT_COMMAND(transfer),
+  #endif
+  INIT_COMMAND(quit)
+};
+
+int
+validate(const char * const cmd)
+{
+  size_t i;
+  int invalid;
+  for (i = 0, invalid = 1; invalid && i < sizeof(commands); ++i) {
+    invalid = strncmp(commands[i].name, cmd, commands[i].length);
+  }
+  return invalid;
+}
