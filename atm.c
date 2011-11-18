@@ -2,16 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <netdb.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-
 #include <readline/history.h>
 #include <readline/readline.h>
 
-#include "atm_cmd.h"
+#include "constants.h"
 
-#define PROMPT "[atorm0] $ "
+#define USE_LOGIN
+#define USE_BALANCE
+#define USE_WITHDRAW
+#define USE_LOGOUT
+#define USE_TRANSFER
+#include "commands.h"
 
 int
 main(int argc, char ** argv)

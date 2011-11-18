@@ -1,19 +1,17 @@
 cmake_minimum_required(VERSION 2.8)
 
-set(CTEST_PROJECT_NAME CryptoFinal)
-project(${CTEST_PROJECT_NAME} C)
+project(CryptoFinal C)
 
-set(PROJECT_SETTINGS_HEADER "commands.h")
 configure_file(
-  "${PROJECT_SOURCE_DIR}/${PROJECT_SETTINGS_HEADER}.in"
-  "${PROJECT_SOURCE_DIR}/${PROJECT_SETTINGS_HEADER}"
+  "${PROJECT_SOURCE_DIR}/banking_constants.h.in"
+  "${PROJECT_BINARY_DIR}/banking_constants.h"
 )
-include_directories("${PROJECT_SOURCE_DIR}")
+include_directories("${PROJECT_BINARY_DIR}")
 
 option(BUILD_ATM "Produce binaries for the ATM" ON)
 option(BUILD_BANK "Produce binaries for the bank" ON)
 option(BUILD_PROXY "Produce binaries for the proxy" ON)
-option(BUILD_TESTING "Produce test harness" OFF)
+option(BUILD_TESTING "Produce testing harnesses" OFF)
 
 if(BUILD_ATM OR BUILD_BANK)
   find_library(READLINE_LIBRARY_PATH readline)
@@ -51,8 +49,13 @@ if(BUILD_PROXY)
   target_link_libraries(proxy ${EXTRA_LIBS})
 endif(BUILD_PROXY)
 
-install(TARGETS atm bank proxy DESTINATION bin)
+set(EXECUTABLE_OUTPUT_PATH "${PROJECT_BINARY_DIR}/bin")
+install(
+  TARGETS atm bank proxy
+  RUNTIME DESTINATION "${EXECUTABLE_OUTPUT_PATH}"
+)
 
 if(BUILD_TESTING)
   include(CTest)
+  set(CTEST_PROJECT_NAME ${CMAKE_PROJECT_NAME})
 endif(BUILD_TESTING)
