@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 project(CryptoFinal C)
 
-set(BANKING_MAJOR_VERSION 0)
-set(BANKING_MINOR_VERSION 1)
+set(BANKING_VERSION_MAJOR 0)
+set(BANKING_VERSION_MINOR 1)
 
 configure_file(
   "${PROJECT_SOURCE_DIR}/banking_constants.h.in"
