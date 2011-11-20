@@ -8,12 +8,14 @@
 
 /* Local includes */
 #include "banking_constants.h"
+
 #define USE_LOGIN
 #define USE_BALANCE
 #define USE_WITHDRAW
 #define USE_LOGOUT
 #define USE_TRANSFER
 #include "banking_commands.h"
+
 #include "socket_utils.h"
 
 struct client_session_data_t {
