@@ -28,17 +28,31 @@ struct server_session_data_t {
 } session_data;
 
 int
-balance_command(const char * args)
+balance_command(char * args)
 {
-  sqlite3_stmt * statement;
+  size_t len, i;
+  char * query, * username;
   const char * residue;
-  char * query = malloc(2 * MAX_COMMAND_LENGTH);
-  snprintf(query, MAX_COMMAND_LENGTH, "SELECT balance FROM accounts WHERE name='%s';", args);
+  sqlite3_stmt * statement;
+  /* Advance args to the first token, this is the username */
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  for (i = 0; *args == ' ' && i < len; ++i, ++args);
+  for (username = args; *args != '\0' && i < len; ++i, ++args) {
+    if (*args == ' ') { *args = '\0'; i = len; }
+  }
+  if (*args != '\0') {
+    printf("WARNING: ignoring '%s' residue\n", args);
+  }
+  /* Construct query string and prepare the statement */
+  query = malloc(2 * MAX_COMMAND_LENGTH);
+  snprintf(query, MAX_COMMAND_LENGTH, "SELECT * FROM accounts WHERE name='%s';", username);
   if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &statement, &residue) == SQLITE_OK) {
     while (sqlite3_step(statement) != SQLITE_DONE) {
       residue = (const char *)sqlite3_column_text(statement, 0);
       printf("%s's balance is $%i\n", residue, sqlite3_column_int(statement, 1));
     }
+  } else {
+    printf("ERROR: no account found for '%s'\n", args);
   }
   sqlite3_finalize(statement);
   free(query);
@@ -46,18 +60,50 @@ balance_command(const char * args)
 }
 
 int
-deposit_command(const char * cmd)
+deposit_command(char * args)
 {
-  /* TODO write proper query code */
-  printf("'%s'\n", cmd);
+  size_t len, i;
+  long int amount;
+  const char * residue;
+  char * query, * username;
+  sqlite3_stmt * lookup, * replace;
+  /* Advance args to the first token, this is the username */
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  for (i = 0; *args == ' ' && i < len; ++i, ++args);
+  for (username = args; *args != '\0' && i < len; ++i, ++args) {
+    if (*args == ' ') { *args = '\0'; i = len; }
+  }
+  /* We should now be at the addition amount */
+  amount = strtol(args, (char **)(&residue), 10);
+  if (*residue != '\0') {
+    printf("WARNING: ignoring '%s' residue\n", residue);
+  }
+  query = malloc(2 * MAX_COMMAND_LENGTH);
+  snprintf(query, MAX_COMMAND_LENGTH, "SELECT * FROM accounts WHERE name='%s';", username);
+  if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &lookup, &residue) == SQLITE_OK) {
+    while (sqlite3_step(lookup) != SQLITE_DONE) {
+      residue = (const char *)sqlite3_column_text(lookup, 0);
+      i = amount + sqlite3_column_int(lookup, 1);
+      printf("Adding $%li brings %s's account to $%u\n", amount, residue, (unsigned)i);
+      snprintf(query, MAX_COMMAND_LENGTH, "UPDATE accounts SET balance=%u WHERE name='%s';", (unsigned)i, residue);
+      assert(sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &replace, &residue) == SQLITE_OK);
+      assert(sqlite3_step(replace) == SQLITE_DONE);
+      assert(sqlite3_reset(replace) == SQLITE_OK);
+    }
+  } else {
+    printf("ERROR: no account found for '%s'", args);
+  }
+  sqlite3_finalize(lookup);
+  sqlite3_finalize(replace);
+  free(query);
   return BANKING_OK;
 }
 
 void
-handle_signal()
+handle_signal(int i)
 {
-  int i;
-  session_data.caught_signal = 1;
+  printf("\n");
+  session_data.caught_signal = i;
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
       fprintf(stderr, "INFO: sending SIGTERM to worker thread\n");
@@ -76,6 +122,7 @@ handle_signal()
   }
   pthread_mutex_destroy(&session_data.accept_mutex);
   destroy_socket(session_data.sock);
+  /* TODO fix issue with database never closing */
   destroy_db(NULL, session_data.db_conn);
 }
 
@@ -127,7 +174,7 @@ int
 main(int argc, char ** argv)
 {
   int i;
-  char * in;
+  char * in, * args;
   command cmd;
 
   /* Sanitize input and attempt socket initialization */
@@ -141,7 +188,7 @@ main(int argc, char ** argv)
   }
 
   /* Database initialization */
-  if (init_db(":memory:", session_data.db_conn)) {
+  if (init_db(":memory:", &session_data.db_conn)) {
     fprintf(stderr, "FATAL: failed to connect to database\n");
     return EXIT_FAILURE;
   }
@@ -149,32 +196,31 @@ main(int argc, char ** argv)
   /* Thread initialization */
   session_data.caught_signal = 0;
   pthread_mutex_init(&session_data.accept_mutex, NULL);
-  signal(SIGINT, handle_signal);
-  signal(SIGTERM, handle_signal);
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     if (pthread_create(&session_data.tids[i], NULL, &handle_client, &session_data.tids[i])) {
       session_data.tids[i] = (pthread_t)(BANKING_ERROR);
       fprintf(stderr, "WARNING: failed to start worker thread\n");
     }
   }
+  signal(SIGINT, handle_signal);
+  signal(SIGTERM, handle_signal);
 
   /* Issue an interactive prompt, only quit on signal */
   while (!session_data.caught_signal && (in = readline(PROMPT))) {
     /* Catch invalid commands */
-    if (validate(in, &cmd)) {
+    if (validate(in, &cmd, &args)) {
       /* Ignore empty strings */
       if (*in != '\0') {
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
       }
     } else {
       /* Hook the command's return value to this signal */
-      session_data.caught_signal = invoke(in, cmd);
+      session_data.caught_signal = ((cmd == NULL) || cmd(args));
     }
     /* Cleanup from here down */
     free(in);
     in = NULL;
   }
-  printf("\n");
-  handle_signal();
+  handle_signal(SIGTERM);
   return EXIT_SUCCESS;
 }

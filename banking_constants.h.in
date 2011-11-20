@@ -19,5 +19,6 @@
 #define MAX_CONNECTIONS 5
 
 #define PROMPT "[banking] $ "
+#define PIN_PROMPT "Enter PIN: "
 
 #endif
