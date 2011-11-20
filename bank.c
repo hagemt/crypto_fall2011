@@ -5,132 +5,148 @@
 /* Readline includes */
 #include <readline/readline.h>
 
-/* SQLite includes */
-#include <sqlite3.h>
-
 /* Thread includes */
 #include <pthread.h>
+#include <signal.h>
 
 /* Local includes */
 #include "banking_constants.h"
+
 #define USE_BALANCE
 #define USE_DEPOSIT
 #include "banking_commands.h"
+
 #include "socket_utils.h"
 
+#include "db_utils.h"
+
+struct server_session_data_t {
+  int sock, caught_signal;
+  sqlite3 * db_conn;
+  pthread_mutex_t accept_mutex;
+  pthread_t tids[MAX_CONNECTIONS];
+} session_data;
+
 int
-balance_command(const char * cmd)
+balance_command(const char * args)
 {
-  printf("Recieved command: %s\n", cmd);
-  return 0;
+  sqlite3_stmt * statement;
+  const char * residue;
+  char * query = malloc(2 * MAX_COMMAND_LENGTH);
+  snprintf(query, MAX_COMMAND_LENGTH, "SELECT balance FROM accounts WHERE name='%s';", args);
+  if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &statement, &residue) == SQLITE_OK) {
+    while (sqlite3_step(statement) != SQLITE_DONE) {
+      residue = sqlite3_column_text(statement, 0);
+      printf("%s's balance is $%i\n", residue, sqlite3_column_int(statement, 1));
+    }
+  }
+  sqlite3_finalize(statement);
+  free(query);
+  return BANKING_OK;
 }
 
 int
 deposit_command(const char * cmd)
 {
-  printf("Recieved command: %s\n", cmd);
-  return 0;
+  /* TODO write proper query code */
+  printf("'%s'\n", cmd);
+  return BANKING_OK;
 }
-
-struct account_t {
-  char * name;
-  double balance;
-};
 
 void
-destroy_db(const char * db_path, sqlite3 * db_conn) {
-  if (db_path && remove(db_path)) {
-    fprintf(stderr, "WARNING: unable to delete database\n");
-  }
-  if (sqlite3_close(db_conn) != SQLITE_OK) {
-    fprintf(stderr, "ERROR: cannot close database\n");
-  }
-}
-
-int
-init_db(const char * db_path, sqlite3 * db_conn)
+handle_signal()
 {
-  if(sqlite3_open(db_path, &db_conn)) {
-    fprintf(stderr, "ERROR: unable to open database\n");
-    destroy_db(db_path, db_conn);
-    return EXIT_FAILURE;
+  int i;
+  session_data.caught_signal = 1;
+  for (i = 0; i < MAX_CONNECTIONS; ++i) {
+    if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
+      fprintf(stderr, "INFO: sending SIGTERM to thread\n");
+      pthread_kill(session_data.tids[i], SIGTERM);
+    }
   }
-  /* TODO add row for Adam, Bob, and Eve */
-  return EXIT_SUCCESS;
+  for (i = 0; i < MAX_CONNECTIONS; ++i) {
+    if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
+      if (pthread_join(session_data.tids[i], NULL)) {
+        fprintf(stderr, "ERROR: failed to collect worker thread\n");
+      } else {
+        fprintf(stderr, "INFO: collected worker thread\n");
+        session_data.tids[i] = (pthread_t)(BANKING_OK);
+      }
+    }
+  }
+  pthread_mutex_destroy(&session_data.accept_mutex);
+  destroy_socket(session_data.sock);
+  destroy_db(NULL, session_data.db_conn);
 }
 
-struct thread_data_t {
-  pthread_t tid;
-  int sock;
-  sqlite3 * db;
-  pthread_mutex_t * accept_mutex;
-};
-
-void * handle_client(void * arg) {
+void *
+handle_client(void * arg)
+{
   int conn;
+  char buffer[MAX_COMMAND_LENGTH];
   struct sockaddr_in remote_addr;
   socklen_t addr_len;
-  struct thread_data_t * data = (struct thread_data_t *)arg;
-  fprintf(stderr, "[thread %lu] INFO: child started\n", data->tid);
+  pthread_t * tid = (pthread_t *)arg;
+  signal(SIGTERM, pthread_exit);
+  fprintf(stderr, "[thread %lu] INFO: child started\n", *tid);
 
-  pthread_mutex_lock(data->accept_mutex);
-  conn = accept(data->sock, (struct sockaddr *)(&remote_addr), &addr_len);
-  pthread_mutex_unlock(data->accept_mutex);
+  while (!session_data.caught_signal) {
+    pthread_mutex_lock(&session_data.accept_mutex);
+    conn = accept(session_data.sock, (struct sockaddr *)(&remote_addr), &addr_len);
+    pthread_mutex_unlock(&session_data.accept_mutex);
 
-  if (conn >= 0) {
-    fprintf(stderr, "[thread %lu] INFO: client connected\n", data->tid);
-    close(conn);
-  } else {
-    fprintf(stderr, "[thread %lu] ERROR: failure to accept\n", data->tid);
+    if (conn >= 0) {
+      fprintf(stderr, "[thread %lu] INFO: client connected\n", *tid);
+      recv(conn, buffer, MAX_COMMAND_LENGTH, 0);
+      buffer[MAX_COMMAND_LENGTH - 1] = '\0';
+      fprintf(stderr, "[thread %lu] RECV: '%s'\n", *tid, buffer);
+      destroy_socket(conn);
+    } else {
+      fprintf(stderr, "[thread %lu] ERROR: failure to accept\n", *tid);
+    }
   }
 
-  fprintf(stderr, "[thread %lu] INFO: child stopped\n", data->tid);
+  fprintf(stderr, "[thread %lu] INFO: child stopped\n", *tid);
   return NULL;
 }
 
 int
 main(int argc, char ** argv)
 {
+  int i;
   char * in;
   command cmd;
-  int i;
-  int ssock;
-  sqlite3 * db_conn;
-  int caught_signal;
-  pthread_mutex_t accept_mutex;
-  struct thread_data_t thread_data[MAX_CONNECTIONS];
 
   /* Sanitize input and attempt socket initialization */
   if (argc != 2) {
     fprintf(stderr, "USAGE: %s port\n", argv[0]);
     return EXIT_FAILURE;
   }
-  if ((ssock = init_server_socket(argv[1])) < 0) {
+  if ((session_data.sock = init_server_socket(argv[1])) < 0) {
     fprintf(stderr, "FATAL: server failed to start\n");
     return EXIT_FAILURE;
   }
 
   /* Database initialization */
-  if (init_db(":memory:", db_conn)) {
+  if (init_db(":memory:", session_data.db_conn)) {
     fprintf(stderr, "FATAL: failed to connect to database\n");
     return EXIT_FAILURE;
   }
 
   /* Thread initialization */
-  pthread_mutex_init(&accept_mutex, NULL);
+  session_data.caught_signal = 0;
+  pthread_mutex_init(&session_data.accept_mutex, NULL);
+  signal(SIGINT, handle_signal);
+  signal(SIGTERM, handle_signal);
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    thread_data[i].sock = ssock;
-    thread_data[i].db = db_conn;
-    thread_data[i].accept_mutex = &accept_mutex;
-    if (pthread_create(&thread_data[i].tid, NULL, &handle_client, &thread_data[i])) {
+    if (pthread_create(&session_data.tids[i], NULL, &handle_client, &session_data.tids[i])) {
+      session_data.tids[i] = (pthread_t)(BANKING_ERROR);
       fprintf(stderr, "WARNING: failed to start worker thread\n");
-    } else {
-      thread_data[i].tid = (pthread_t)(BANKING_ERROR);
     }
   }
 
   /* Issue an interactive prompt, only quit on signal */
-  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
+  while (!session_data.caught_signal && (in = readline(PROMPT))) {
     /* Catch invalid commands */
     if (validate(in, &cmd)) {
       /* Ignore empty strings */
@@ -139,27 +155,13 @@ main(int argc, char ** argv)
       }
     } else {
       /* Hook the command's return value to this signal */
-      caught_signal = invoke(in, cmd);
+      session_data.caught_signal = invoke(in, cmd);
     }
     /* Cleanup from here down */
     free(in);
     in = NULL;
   }
-
-  for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    if (thread_data[i].tid != (pthread_t)(BANKING_ERROR)) {
-      if (pthread_kill(thread_data[i].tid, 9)) {
-        fprintf(stderr, "ERROR: failed to collect worker thread %d\n", i);
-      } else {
-        thread_data[i].tid = (pthread_t)(BANKING_OK);
-      }
-    }
-  }
-  pthread_mutex_destroy(&accept_mutex);
-
-  destroy_socket(ssock);
-  destroy_db(NULL, db_conn);
-
   printf("\n");
+  handle_signal();
   return EXIT_SUCCESS;
 }
