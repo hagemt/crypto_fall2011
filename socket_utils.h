@@ -15,7 +15,7 @@
 /* Local includes */
 #include "banking_constants.h"
 
-int
+void
 destroy_socket(int sock)
 {
   /* Attempt to stop communication in both directions */
@@ -24,10 +24,7 @@ destroy_socket(int sock)
   }
   if (close(sock)) {
     fprintf(stderr, "WARNING: unable to close socket\n");
-  } else {
-    sock = BANKING_ERROR;
   }
-  return sock;
 }
 
 int
