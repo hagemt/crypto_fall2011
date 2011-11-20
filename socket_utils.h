@@ -39,7 +39,12 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   if (residue == NULL || *residue != '\0') {
     fprintf(stderr, "WARNING: ignoring extraneous characters\n");
   }
-  printf("INFO: will attempt a connection on port %li\n", port_num);
+  printf("INFO: will attempt to open port %li\n", port_num);
+  /* TODO look more closely at overflow
+   * printf("sizeof(local_addr->sin_port) = %lu\n", sizeof(local_addr->sin_port));
+   * printf("sizeof((unsigned short)port_num) = %lu\n", sizeof((unsigned short)port_num));
+   * printf("sizeof(htons((unsigned short)port_num)) = %lu\n", sizeof(htons((unsigned short)port_num)));
+   */
   #endif
   if (port_num < MIN_PORT_NUM || port_num > MAX_PORT_NUM) {
     fprintf(stderr, "ERROR: port '%s' out of range [%i, %i]\n", port, MIN_PORT_NUM, MAX_PORT_NUM);
@@ -47,10 +52,10 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   }
   local_addr->sin_family = AF_INET;
   local_addr->sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
-  local_addr->sin_port = htonl(port_num);
+  local_addr->sin_port = htons((unsigned short)port_num);
 
   /* Perform actual opening of the socket */
-  // TODO a good non-zero value for protocol?
+  /* TODO a good non-zero value for protocol? */
   if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
     fprintf(stderr, "ERROR: unable to open socket\n");
   }
@@ -75,7 +80,11 @@ init_client_socket(const char * port)
     return -1;
   }
   #ifndef NDEBUG
-  printf("INFO: connected to port %u\n", ntohl(local_addr.sin_port));
+  printf("INFO: connected to port %hu\n", ntohs(local_addr.sin_port));
+  /* TODO look more closely at overflow
+   * fprintf(stderr, "sizeof(local_addr.sin_port) = %lu\n", sizeof(local_addr.sin_port));
+   * fprintf(stderr, "sizeof(ntohs(local_addr.sin_port)) = %lu\n", sizeof(ntohs(local_addr.sin_port)));
+   */
   #endif
 
   return sock;
@@ -104,7 +113,11 @@ init_server_socket(const char * port)
     return -1;
   }
   #ifndef NDEBUG
-  printf("INFO: listening on port %u\n", ntohl(local_addr.sin_port));
+  printf("INFO: listening on port %hu\n", ntohs(local_addr.sin_port));
+  /* TODO look more closely at overflow
+   * fprintf(stderr, "sizeof(local_addr.sin_port) = %lu\n", sizeof(local_addr.sin_port));
+   * fprintf(stderr, "sizeof(ntohs(local_addr.sin_port)) = %lu\n", sizeof(ntohs(local_addr.sin_port)));
+   */
   #endif
 
   return sock;
