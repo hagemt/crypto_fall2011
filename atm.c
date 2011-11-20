@@ -20,35 +20,35 @@ int
 login_command(char * cmd)
 {
   printf("Recieved command: %s\n", cmd);
-  return 0;
+  return BANKING_OK;
 }
 
 int
 balance_command(char * cmd)
 {
   printf("Recieved command: %s\n", cmd);
-  return 0;
+  return BANKING_OK;
 }
 
 int
 withdraw_command(char * cmd)
 {
   printf("Recieved command: %s\n", cmd);
-  return 0;
+  return BANKING_OK;
 }
 
 int
 logout_command(char * cmd)
 {
   printf("Recieved command: %s\n", cmd);
-  return 0;
+  return BANKING_OK;
 }
 
 int
 transfer_command(char * cmd)
 {
   printf("Recieved command: %s\n", cmd);
-  return 0;
+  return BANKING_OK;
 }
 
 int
@@ -56,7 +56,8 @@ main(int argc, char ** argv)
 {
   char * in;
   command cmd;
-  int csock, caught_signal;
+  int csock;
+  int caught_signal;
 
   /* Input sanitation */
   if (argc != 2) {
@@ -85,7 +86,7 @@ main(int argc, char ** argv)
     in = NULL;
   }
 
-  destroy_socket(csock);
+  csock = destroy_socket(csock);
   printf("\n");
   return EXIT_SUCCESS;
 }

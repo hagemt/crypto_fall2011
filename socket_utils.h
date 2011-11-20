@@ -15,15 +15,19 @@
 /* Local includes */
 #include "banking_constants.h"
 
-void
+int
 destroy_socket(int sock)
 {
+  /* Attempt to stop communication in both directions */
   if (shutdown(sock, 2)) {
     fprintf(stderr, "WARNING: unable to shutdown socket\n");
   }
   if (close(sock)) {
     fprintf(stderr, "WARNING: unable to close socket\n");
+  } else {
+    sock = BANKING_ERROR;
   }
+  return sock;
 }
 
 int
@@ -48,7 +52,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   #endif
   if (port_num < MIN_PORT_NUM || port_num > MAX_PORT_NUM) {
     fprintf(stderr, "ERROR: port '%s' out of range [%i, %i]\n", port, MIN_PORT_NUM, MAX_PORT_NUM);
-    return -1;
+    return BANKING_ERROR;
   }
   local_addr->sin_family = AF_INET;
   local_addr->sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
@@ -70,14 +74,14 @@ init_client_socket(const char * port)
   socklen_t addr_len = sizeof(local_addr);
   if ((sock = create_socket(port, &local_addr)) < 0) {
     fprintf(stderr, "ERROR: failed to create socket\n");
-    return -1;
+    return BANKING_ERROR;
   }
 
   /* Perform connect */
   if (connect(sock, (struct sockaddr *)(&local_addr), addr_len)) {
     fprintf(stderr, "ERROR: unable to connect to socket\n");
     destroy_socket(sock);
-    return -1;
+    return BANKING_ERROR;
   }
   #ifndef NDEBUG
   printf("INFO: connected to port %hu\n", ntohs(local_addr.sin_port));
@@ -98,19 +102,19 @@ init_server_socket(const char * port)
   socklen_t addr_len = sizeof(local_addr);
   if ((sock = create_socket(port, &local_addr)) < 0) {
     fprintf(stderr, "ERROR: failed to create socket\n");
-    return -1;
+    return BANKING_ERROR;
   }
 
   /* Perform bind and listen */
   if (bind(sock, (struct sockaddr *)(&local_addr), addr_len)) {
     fprintf(stderr, "ERROR: unable to bind socket\n");
     destroy_socket(sock);
-    return -1;
+    return BANKING_ERROR;
   }
   if (listen(sock, MAX_CONNECTIONS)) {
     fprintf(stderr, "ERROR: unable to listen on socket\n");
     destroy_socket(sock);
-    return -1;
+    return BANKING_ERROR;
   }
   #ifndef NDEBUG
   printf("INFO: listening on port %hu\n", ntohs(local_addr.sin_port));

@@ -4,6 +4,9 @@
 #define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
 #define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
 
+#define BANKING_OK    0x0
+#define BANKING_ERROR 0x1
+
 #define LOCAL_ADDRESS "127.0.0.1"
 
 #define MIN_PORT_NUM 0x0400
@@ -13,6 +16,6 @@
 
 #define MAX_CONNECTIONS 5
 
-#define PROMPT "[secure-banking] $ "
+#define PROMPT "[banking] $ "
 
 #endif
