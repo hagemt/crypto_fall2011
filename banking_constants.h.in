@@ -4,8 +4,10 @@
 #define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
 #define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
 
-#define BANKING_OK    0x0
-#define BANKING_ERROR 0x1
+#define AUTH_CHECK_MSG "Are you still there?"
+
+#define BANKING_OK     0
+#define BANKING_ERROR -1
 
 #define LOCAL_ADDRESS "127.0.0.1"
 
