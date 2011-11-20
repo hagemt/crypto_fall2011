@@ -8,35 +8,35 @@
 
 #ifdef USE_LOGIN
 int
-login_command(char *);
+login_command(const char *);
 #endif
 
 #ifdef USE_BALANCE
 int
-balance_command(char *);
+balance_command(const char *);
 #endif
 
 #ifdef USE_WITHDRAW
 int
-withdraw_command(char *);
+withdraw_command(const char *);
 #endif
 
 #ifdef USE_LOGOUT
 int
-logout_command(char *);
+logout_command(const char *);
 #endif
 
 #ifdef USE_TRANSFER
 int
-transfer_command(char *);
+transfer_command(const char *);
 #endif
 
 #ifdef USE_DEPOSIT
 int
-deposit_command(char *);
+deposit_command(const char *);
 #endif
 
-typedef int (*command)(char *);
+typedef int (*command)(const char *);
 
 struct command_t
 {
