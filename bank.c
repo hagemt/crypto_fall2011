@@ -36,7 +36,7 @@ balance_command(const char * args)
   snprintf(query, MAX_COMMAND_LENGTH, "SELECT balance FROM accounts WHERE name='%s';", args);
   if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &statement, &residue) == SQLITE_OK) {
     while (sqlite3_step(statement) != SQLITE_DONE) {
-      residue = sqlite3_column_text(statement, 0);
+      residue = (const char *)sqlite3_column_text(statement, 0);
       printf("%s's balance is $%i\n", residue, sqlite3_column_int(statement, 1));
     }
   }
@@ -79,6 +79,12 @@ handle_signal()
   destroy_db(NULL, session_data.db_conn);
 }
 
+inline void
+retire(int sig) {
+  fprintf(stderr, "[signal %i] INFO: worker retiring\n", sig);
+  pthread_exit(NULL);
+}
+
 void *
 handle_client(void * arg)
 {
@@ -86,27 +92,34 @@ handle_client(void * arg)
   char buffer[MAX_COMMAND_LENGTH];
   struct sockaddr_in remote_addr;
   socklen_t addr_len;
-  pthread_t * tid = (pthread_t *)arg;
-  signal(SIGTERM, pthread_exit);
-  fprintf(stderr, "[thread %lu] INFO: child started\n", *tid);
+  pthread_t * tid;
 
+  /* Worker threads should terminate on SIGTERM */
+  signal(SIGTERM, retire);
+
+  /* Fetch the ID from the argument */
+  tid = (pthread_t *)arg;
+  fprintf(stderr, "[thread %lu] INFO: worker started\n", *tid);
+
+  /* As long as possible, grab up whatever connection is available */
   while (!session_data.caught_signal) {
     pthread_mutex_lock(&session_data.accept_mutex);
     conn = accept(session_data.sock, (struct sockaddr *)(&remote_addr), &addr_len);
     pthread_mutex_unlock(&session_data.accept_mutex);
-
     if (conn >= 0) {
-      fprintf(stderr, "[thread %lu] INFO: client connected\n", *tid);
+      fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", *tid);
       recv(conn, buffer, MAX_COMMAND_LENGTH, 0);
+      #ifndef NDEBUG
       buffer[MAX_COMMAND_LENGTH - 1] = '\0';
       fprintf(stderr, "[thread %lu] RECV: '%s'\n", *tid, buffer);
+      #endif
       destroy_socket(conn);
     } else {
-      fprintf(stderr, "[thread %lu] ERROR: failure to accept\n", *tid);
+      fprintf(stderr, "[thread %lu] ERROR: worker failed to accept client\n", *tid);
     }
   }
 
-  fprintf(stderr, "[thread %lu] INFO: child stopped\n", *tid);
+  retire(0);
   return NULL;
 }
 
