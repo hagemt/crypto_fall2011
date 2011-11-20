@@ -20,8 +20,9 @@
 
 struct client_session_data_t {
   int sock;
+  char * user;
   int key;
-  // TODO? char buffer[MAX_COMMAND_LENGTH];
+  /* TODO? char buffer[MAX_COMMAND_LENGTH]; */
 } session_data;
 
 int
@@ -44,7 +45,7 @@ authenticated(struct client_session_data_t * session_data) {
 int
 login_command(const char * cmd)
 {
-  char PIN_buffer[MAX_COMMAND_LENGTH];
+  char PIN_buffer[MAX_COMMAND_LENGTH], * msg;
 
   if (authenticated(&session_data)) {
     /* TODO better way to fetch PIN? */
@@ -52,7 +53,13 @@ login_command(const char * cmd)
     read(0, PIN_buffer, MAX_COMMAND_LENGTH);
     PIN_buffer[MAX_COMMAND_LENGTH - 1] = '\0';
 
+    session_data.key = 1;
     /* TODO perform actual authorization */
+    msg = malloc(2 * MAX_COMMAND_LENGTH);
+    snprintf(msg, MAX_COMMAND_LENGTH, "login %s %s", cmd, PIN_buffer);
+    send(session_data.sock, msg, MAX_COMMAND_LENGTH, 0);
+    free(msg);
+
     if (authenticated(&session_data)) {
       printf("AUTHENTICATION FAILURE\n");
     }
@@ -102,8 +109,10 @@ logout_command(const char * cmd)
   if (authenticated(&session_data)) {
     printf("You did not 'login' first.\n");
   } else {
-    /* TODO proper deauthorization */
     session_data.key = 0;
+    /* TODO proper deauthorization */
+    send(session_data.sock, "logout", 7, 0);
+    assert(*cmd == '\0');
   }
   /* Ensure we are not authenticated */
   if (!authenticated(&session_data)) {
