@@ -60,7 +60,7 @@ handle_signal()
   session_data.caught_signal = 1;
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
-      fprintf(stderr, "INFO: sending SIGTERM to thread\n");
+      fprintf(stderr, "INFO: sending SIGTERM to worker thread\n");
       pthread_kill(session_data.tids[i], SIGTERM);
     }
   }
@@ -81,7 +81,7 @@ handle_signal()
 
 inline void
 retire(int sig) {
-  fprintf(stderr, "[signal %i] INFO: worker retiring\n", sig);
+  fprintf(stderr, "INFO: worker thread retiring [signal %i]\n", sig);
   pthread_exit(NULL);
 }
 
