@@ -1,16 +1,12 @@
 /* Standard includes */
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-/* Networking includes */
-/*#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/types.h>
-#include <sys/socket.h>*/
 
 /* Readline includes */
 #include <readline/readline.h>
+
+/* SQLite includes */
+#include <sqlite3.h>
 
 /* Local includes */
 #include "banking_constants.h"
@@ -38,12 +34,38 @@ struct account_t {
   double balance;
 };
 
+sqlite3 *
+destroy_db(const char * db_path, sqlite3 * db_conn) {
+  if (db_path && remove(db_path)) {
+    fprintf(stderr, "WARNING: unable to delete database\n");
+  }
+  if (sqlite3_close(db_conn)) {
+    fprintf(stderr, "ERROR: cannot close database\n");
+  } else {
+    db_conn = NULL;
+  }
+  return db_conn;
+}
+
+int
+init_db(const char * db_path, sqlite3 * db_conn)
+{
+  if(sqlite3_open(db_path, &db_conn)) {
+    fprintf(stderr, "ERROR: unable to open database\n");
+    destroy_db(db_path, db_conn);
+    return EXIT_FAILURE;
+  }
+  /* TODO add row for Adam, Bob, and Eve */
+  return EXIT_SUCCESS;
+}
+
 int
 main(int argc, char ** argv)
 {
   char * in;
   command cmd;
   int ssock;
+  sqlite3 * db_conn;
   int caught_signal;
 
   /* Sanitize input and attempt socket initialization */
@@ -53,6 +75,12 @@ main(int argc, char ** argv)
   }
   if ((ssock = init_server_socket(argv[1])) < 0) {
     fprintf(stderr, "FATAL: server failed to start\n");
+    return EXIT_FAILURE;
+  }
+
+  /* Database initialization */
+  if (init_db(":memory:", db_conn)) {
+    fprintf(stderr, "FATAL: failed to connect to database\n");
     return EXIT_FAILURE;
   }
 
@@ -73,7 +101,8 @@ main(int argc, char ** argv)
     in = NULL;
   }
 
-  destroy_socket(ssock);
+  ssock = destroy_socket(ssock);
+  db_conn = destroy_db(NULL, db_conn);
   printf("\n");
   return EXIT_SUCCESS;
 }
