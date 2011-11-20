@@ -19,30 +19,35 @@
 int
 login_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
 int
 balance_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
 int
 withdraw_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
 int
 logout_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
 int
 transfer_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
@@ -67,7 +72,10 @@ main(int argc, char ** argv)
   for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
     /* Read in a line, then attempt to associate it with a command */
     if (validate(in, &cmd)) {
-      fprintf(stderr, "ERROR: invalid command: '%s'\n", in);
+      /* Ignore empty commands */
+      if (*in != '\0') {
+        fprintf(stderr, "ERROR: invalid command '%s'\n", in);
+      }
     } else {
       /* Set up to signal based on the command's invocation */
       caught_signal = invoke(in, cmd);

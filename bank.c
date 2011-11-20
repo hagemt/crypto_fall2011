@@ -22,12 +22,14 @@
 int
 balance_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
 int
 deposit_command(char * cmd)
 {
+  printf("Recieved command: %s\n", cmd);
   return 0;
 }
 
@@ -41,7 +43,7 @@ main(int argc, char ** argv)
 {
   char * in;
   command cmd;
-  int ssock, csock;
+  int ssock;
   int caught_signal;
 
   /* Sanitize input and attempt socket initialization */
@@ -58,7 +60,10 @@ main(int argc, char ** argv)
   for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
     /* Catch invalid commands */
     if (validate(in, &cmd)) {
-      fprintf(stderr, "ERROR: invalid command '%s'\n", in);
+      /* Ignore empty strings */
+      if (*in != '\0') {
+        fprintf(stderr, "ERROR: invalid command '%s'\n", in);
+      }
     } else {
       /* Hook the command's return value to this signal */
       caught_signal = invoke(in, cmd);
