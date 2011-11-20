@@ -1,6 +1,7 @@
 /* Standard includes */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* Local includes */
 #include "socket_utils.h"
@@ -8,7 +9,9 @@
 int
 main(int argc, char ** argv)
 {
-  int ssock, csock;
+  int ssock, csock, conn;
+  struct sockaddr_in addr_info;
+  socklen_t addr_len;
   char buffer[MAX_COMMAND_LENGTH];
   ssize_t s, r; size_t l;
   if (argc != 3) {
@@ -23,8 +26,10 @@ main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
   while (1) {
-    r = recv(ssock, buffer, MAX_COMMAND_LENGTH, 0);
-    s = send(csock, buffer, MAX_COMMAND_LENGTH, 0);
+    conn = accept(ssock, (struct sockaddr *)(&addr_info), &addr_len);
+    r = recv(conn, buffer, MAX_COMMAND_LENGTH, 0);
+    l = strnlen(buffer, MAX_COMMAND_LENGTH - 1) + 1;
+    s = send(csock, buffer, l, 0);
     if (r != s) {
       fprintf(stderr, "%i bytes lost!\n", (int)(r - s));
     } else {
