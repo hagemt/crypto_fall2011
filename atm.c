@@ -23,6 +23,7 @@
 
 /* Readline includes */
 #include <readline/readline.h>
+#include <readline/history.h>
 
 /* Local includes */
 #include "banking_constants.h"
@@ -61,36 +62,31 @@ authenticated(struct client_session_data_t * session_data) {
 }
 
 int
-login_command(const char * cmd)
+login_command(char * cmd)
 {
-  char PIN_buffer[MAX_COMMAND_LENGTH], * msg;
-
+  char * pin, * msg;
   if (authenticated(&session_data)) {
     /* TODO better way to fetch PIN? */
-    printf("Enter PIN: ");
-    read(0, PIN_buffer, MAX_COMMAND_LENGTH);
-    PIN_buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-
-    session_data.key = 1;
-    /* TODO perform actual authorization */
-    msg = malloc(2 * MAX_COMMAND_LENGTH);
-    snprintf(msg, MAX_COMMAND_LENGTH, "login %s %s", cmd, PIN_buffer);
-    send(session_data.sock, msg, MAX_COMMAND_LENGTH, 0);
-    free(msg);
-
+    if ((pin = readline(PIN_PROMPT))) {
+      session_data.key = 1;
+      /* TODO perform actual authorization */
+      msg = malloc(2 * MAX_COMMAND_LENGTH);
+      snprintf(msg, MAX_COMMAND_LENGTH, "login %s %s", cmd, pin);
+      free(pin);
+      send(session_data.sock, msg, MAX_COMMAND_LENGTH, 0);
+      free(msg);
+    }
     if (authenticated(&session_data)) {
       printf("AUTHENTICATION FAILURE\n");
     }
   } else {
     printf("You must 'logout' first.\n");
   }
-
-  memset(PIN_buffer, 0, MAX_COMMAND_LENGTH);
   return BANKING_OK;
 }
 
 int
-balance_command(const char * cmd)
+balance_command(char * cmd)
 {
   size_t len;
   char response_buffer[MAX_COMMAND_LENGTH];
@@ -106,7 +102,7 @@ balance_command(const char * cmd)
 }
 
 int
-withdraw_command(const char * cmd)
+withdraw_command(char * cmd)
 {
   size_t len;
   char response_buffer[MAX_COMMAND_LENGTH];
@@ -122,7 +118,7 @@ withdraw_command(const char * cmd)
 }
 
 int
-logout_command(const char * cmd)
+logout_command(char * cmd)
 {
   if (authenticated(&session_data)) {
     printf("You did not 'login' first.\n");
@@ -141,7 +137,7 @@ logout_command(const char * cmd)
 }
 
 int
-transfer_command(const char * cmd)
+transfer_command(char * cmd)
 {
   size_t len;
   char response_buffer[MAX_COMMAND_LENGTH];
@@ -159,7 +155,7 @@ transfer_command(const char * cmd)
 int
 main(int argc, char ** argv)
 {
-  char * in;
+  char * in, * args;
   command cmd;
   int caught_signal;
 
@@ -177,14 +173,16 @@ main(int argc, char ** argv)
   for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
     session_data.key = !session_data.key;
     /* Read in a line, then attempt to associate it with a command */
-    if (validate(in, &cmd)) {
+    if (validate(in, &cmd, &args)) {
       /* Ignore empty commands */
       if (*in != '\0') {
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
       }
     } else {
+      /* Add the command to the shell history */
+      add_history(in);
       /* Set up to signal based on the command's invocation */
-      caught_signal = invoke(in, cmd);
+      caught_signal = ((cmd == NULL) || cmd(args));
     }
     /* Cleanup from here down */
     free(in);

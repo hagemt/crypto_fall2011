@@ -26,35 +26,35 @@
 
 #ifdef USE_LOGIN
 int
-login_command(const char *);
+login_command(char *);
 #endif
 
 #ifdef USE_BALANCE
 int
-balance_command(const char *);
+balance_command(char *);
 #endif
 
 #ifdef USE_WITHDRAW
 int
-withdraw_command(const char *);
+withdraw_command(char *);
 #endif
 
 #ifdef USE_LOGOUT
 int
-logout_command(const char *);
+logout_command(char *);
 #endif
 
 #ifdef USE_TRANSFER
 int
-transfer_command(const char *);
+transfer_command(char *);
 #endif
 
 #ifdef USE_DEPOSIT
 int
-deposit_command(const char *);
+deposit_command(char *);
 #endif
 
-typedef int (*command)(const char *);
+typedef int (*command)(char *);
 
 struct command_t
 {
@@ -89,12 +89,20 @@ const struct command_t commands[] =
 };
 
 int
-validate(const char * const cmd, command * fun)
+validate(char * cmd, command * fun, char ** args)
 {
   int invalid;
-  size_t i = 0;
-  /* Interate through all commands with valid functions */
-  while (commands[i].function) {
+  size_t i, len;
+  len = strnlen(cmd, MAX_COMMAND_LENGTH);
+  /* Advance cmd to the first non-space character */
+  for (i = 0; *cmd == ' ' && i < len; ++i, ++cmd);
+  /* Locate the first blank space after the command */
+  for (*args = cmd; **args != '\0' && i < len; ++i, ++*args) {
+    /* We want to terminate here, the args follow */
+    if (**args == ' ') { **args = '\0'; i = len; }
+  }
+  /* Interate through all known commands with valid functions */
+  for (i = 0; commands[i].function;) {
     assert(commands[i].length <= MAX_COMMAND_LENGTH);
     /* If we find a match, break immediately; otherwise, continue */
     invalid = strncmp(commands[i].name, cmd, commands[i].length);
@@ -104,22 +112,6 @@ validate(const char * const cmd, command * fun)
   *fun = commands[i].function;
   /* Non-zero return value iff invalid and not final command */
   return invalid && strncmp(commands[i].name, cmd, commands[i].length);
-}
-
-int
-invoke(char * const cmd, command fun)
-{
-  size_t i;
-  char * args = cmd;
-  /* Safely probe past spaces */
-  for (i = 0; *args != '\0' && i < MAX_COMMAND_LENGTH; ++i, ++args) {
-    if (*args == ' ') {
-      *args = '\0';
-      i = MAX_COMMAND_LENGTH;
-    }
-  }
-  /* Invoke the target command provided it is valid */
-  return (fun == NULL) || fun(args);
 }
 
 #endif

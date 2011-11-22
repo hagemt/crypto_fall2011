@@ -52,7 +52,7 @@ main(int argc, char ** argv)
       fprintf(stderr, "%i bytes lost!\n", (int)(r - s));
     } else {
       buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-      printf("FW: %s\n", buffer);
+      printf("FW: '%s'\n", buffer);
     }
   }
   destroy_socket(csock);
