@@ -4,6 +4,7 @@
 
 /* Readline includes */
 #include <readline/readline.h>
+#include <readline/history.h>
 
 /* Thread includes */
 #include <pthread.h>
@@ -214,6 +215,8 @@ main(int argc, char ** argv)
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
       }
     } else {
+      /* Add the command to the shell history */
+      add_history(in);
       /* Hook the command's return value to this signal */
       session_data.caught_signal = ((cmd == NULL) || cmd(args));
     }

@@ -5,6 +5,7 @@
 
 /* Readline includes */
 #include <readline/readline.h>
+#include <readline/history.h>
 
 /* Local includes */
 #include "banking_constants.h"
@@ -160,6 +161,8 @@ main(int argc, char ** argv)
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
       }
     } else {
+      /* Add the command to the shell history */
+      add_history(in);
       /* Set up to signal based on the command's invocation */
       caught_signal = ((cmd == NULL) || cmd(args));
     }
