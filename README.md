@@ -13,7 +13,7 @@ Description
   of possible attack vectors. Its author(s) aim(s) to deliver
   reliable and transparent security features.
 
-  Plouton leverages the readline, pthread, SQLite, and GnuTLS libraries.
+  Plouton leverages the readline, gcrypt, pthread, and SQLite3 libraries.
 
 Changelog
 =========

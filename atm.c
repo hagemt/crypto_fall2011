@@ -21,20 +21,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Readline includes */
+/* GNU includes */
 #include <readline/readline.h>
 #include <readline/history.h>
 
 /* Local includes */
 #include "banking_constants.h"
-
 #define USE_LOGIN
 #define USE_BALANCE
 #define USE_WITHDRAW
 #define USE_LOGOUT
 #define USE_TRANSFER
 #include "banking_commands.h"
-
+#include "crypto_utils.h"
 #include "socket_utils.h"
 
 struct client_session_data_t {
@@ -159,9 +158,13 @@ main(int argc, char ** argv)
   command cmd;
   int caught_signal;
 
-  /* Input sanitation */
+  /* Input sanitation and initialization */
   if (argc != 2) {
     fprintf(stderr, "USAGE: %s port_num\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  if (init_crypto()) {
+    fprintf(stderr, "FATAL: invalid security\n");
     return EXIT_FAILURE;
   }
   if ((session_data.sock = init_client_socket(argv[1])) < 0) {
@@ -170,7 +173,8 @@ main(int argc, char ** argv)
   }
 
   /* Issue an interactive prompt, terminate only on failure */
-  for (caught_signal = 0; !caught_signal && (in = readline(PROMPT));) {
+  for (caught_signal = 0; !caught_signal && (in = readline(SHELL_PROMPT));) {
+    /* TODO for now, just toggle validation */
     session_data.key = !session_data.key;
     /* Read in a line, then attempt to associate it with a command */
     if (validate(in, &cmd, &args)) {
@@ -190,6 +194,10 @@ main(int argc, char ** argv)
   }
 
   destroy_socket(session_data.sock);
+  #ifndef NDEBUG
+  test_cryptosystem();
+  #endif
+  shutdown_crypto();
   printf("\n");
   return EXIT_SUCCESS;
 }

@@ -225,7 +225,7 @@ main(int argc, char ** argv)
   signal(SIGTERM, handle_signal);
 
   /* Issue an interactive prompt, only quit on signal */
-  while (!session_data.caught_signal && (in = readline(PROMPT))) {
+  while (!session_data.caught_signal && (in = readline(SHELL_PROMPT))) {
     /* Catch invalid commands */
     if (validate(in, &cmd, &args)) {
       /* Ignore empty strings */

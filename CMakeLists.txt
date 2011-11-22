@@ -37,22 +37,34 @@ option(BUILD_ATM "Produce binaries for the ATM" ON)
 option(BUILD_BANK "Produce binaries for the bank" ON)
 option(BUILD_PROXY "Produce binaries for the proxy" ON)
 option(BUILD_TESTING "Produce testing harnesses" OFF)
+option(CMAKE_VERBOSE_MAKEFILE "Produce verbose Makefiles" OFF)
+mark_as_advanced(CMAKE_VERBOSE_MAKEFILE)
 
 # Libraries
 
+if(BUILD_ATM OR BUILD_BANK)
+  # Find readline
+  find_library(READLINE_LIBRARY_PATH readline)
+endif(BUILD_ATM OR BUILD_BANK)
+
 if(BUILD_ATM)
   # Add readline
-  find_library(READLINE_LIBRARY_PATH readline)
   if(READLINE_LIBRARY_PATH)
     set(ATM_LIBRARIES ${ATM_LIBRARIES} ${READLINE_LIBRARY_PATH})
   else(READLINE_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find readline library")
   endif(READLINE_LIBRARY_PATH)
+  # Add gcrypt
+  find_library(CRYPTO_LIBRARY_PATH gcrypt)
+  if(CRYPTO_LIBRARY_PATH)
+    set(ATM_LIBRARIES ${ATM_LIBRARIES} ${CRYPTO_LIBRARY_PATH})
+  else(CRYPTO_LIBRARY_PATH)
+    message(FATAL_ERROR "Cannot find crypto library")
+  endif(CRYPTO_LIBRARY_PATH)
 endif(BUILD_ATM)
 
 if(BUILD_BANK)
   # Add readline
-  find_library(READLINE_LIBRARY_PATH readline)
   if(READLINE_LIBRARY_PATH)
     set(BANK_LIBRARIES ${BANK_LIBRARIES} ${READLINE_LIBRARY_PATH})
   else(READLINE_LIBRARY_PATH)
@@ -73,16 +85,6 @@ if(BUILD_BANK)
     message(FATAL_ERROR "Cannot find thread library")
   endif(THREAD_LIBRARY_PATH)
 endif(BUILD_BANK)
-
-if(BUILD_PROXY)
-  # Add openssl
-  find_library(CRYPTO_LIBRARY_PATH gnutls)
-  if(CRYPTO_LIBRARY_PATH)
-    set(PROXY_LIBRARIES ${PROXY_LIBRARIES} ${CRYPTO_LIBRARY_PATH})
-  else(CRYPTO_LIBRARY_PATH)
-    message(FATAL_ERROR "Cannot find crypto library")
-  endif(CRYPTO_LIBRARY_PATH)
-endif(BUILD_PROXY)
 
 # Executables
 
