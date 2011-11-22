@@ -1,6 +1,24 @@
+##
+# Copyright 2011 by Tor E. Hagemann <hagemt@rpi.edu>
+# This file is part of Plouton.
+#
+# Plouton is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Plouton is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
+##
+
 cmake_minimum_required(VERSION 2.8)
 
-project(CryptoFinal C)
+project(Plouton C)
 
 set(BANKING_VERSION_MAJOR 0)
 set(BANKING_VERSION_MINOR 1)
@@ -58,12 +76,12 @@ endif(BUILD_BANK)
 
 if(BUILD_PROXY)
   # Add openssl
-  find_library(SSL_LIBRARY_PATH ssl)
-  if(SSL_LIBRARY_PATH)
-    set(PROXY_LIBRARIES ${PROXY_LIBRARIES} ${SSL_LIBRARY_PATH})
-  else(SSL_LIBRARY_PATH)
+  find_library(CRYPTO_LIBRARY_PATH gnutls)
+  if(CRYPTO_LIBRARY_PATH)
+    set(PROXY_LIBRARIES ${PROXY_LIBRARIES} ${CRYPTO_LIBRARY_PATH})
+  else(CRYPTO_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find crypto library")
-  endif(SSL_LIBRARY_PATH)
+  endif(CRYPTO_LIBRARY_PATH)
 endif(BUILD_PROXY)
 
 # Executables
