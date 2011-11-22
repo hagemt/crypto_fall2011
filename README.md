@@ -1,4 +1,5 @@
-== Description ==
+Description
+===========
 
   Plouton is designed to be a secure client/server/gateway solution
   for managing simple banking transactions. Its protocol consists of
@@ -14,7 +15,8 @@
 
   Plouton leverages the readline, pthread, SQLite, and GnuTLS libraries.
 
-== Changelog ==
+Changelog
+=========
 
   Initial Release:
 
@@ -24,7 +26,8 @@
   * Feature: Worker threads to handle simultaneous connections. [bank]
   * Developing: A transparent courier between local ports. [proxy]
 
-== License ==
+License
+=======
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -39,7 +42,8 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-== Contributors ==
+Contributors
+============
 
   * Tor E. Hagemann <hagemt@rpi.edu>
 
