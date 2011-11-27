@@ -40,6 +40,8 @@
 
 #define MAX_CONNECTIONS 5
 
+#define MAX_TRANSACTION 10000
+
 #define SHELL_PROMPT "[banking] $ "
 #define PIN_PROMPT "Enter PIN: "
 

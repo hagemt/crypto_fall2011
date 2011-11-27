@@ -82,7 +82,7 @@ int
 deposit_command(char * args)
 {
   size_t len, i;
-  long int amount;
+  long int amount, balance;
   const char * residue;
   char * query, * username;
   sqlite3_stmt * lookup, * replace;
@@ -97,19 +97,26 @@ deposit_command(char * args)
   if (*residue != '\0') {
     printf("WARNING: ignoring '%s' residue\n", residue);
   }
+  if (amount < -MAX_TRANSACTION || amount > MAX_TRANSACTION) {
+    printf("ERROR: amount (%i) exceeds maximum transaction (%i)\n", amount, MAX_TRANSATION);
+    return BANKING_OK;
+  }
   query = malloc(2 * MAX_COMMAND_LENGTH);
+  /* TODO fix this glaring injection vulnerability */
   snprintf(query, MAX_COMMAND_LENGTH, "SELECT * FROM accounts WHERE name='%s';", username);
   if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &lookup, &residue) == SQLITE_OK) {
     while (sqlite3_step(lookup) != SQLITE_DONE) {
-      residue = (const char *)sqlite3_column_text(lookup, 0);
-      i = amount + sqlite3_column_int(lookup, 1);
-      printf("Adding $%li brings %s's account to $%u\n", amount, residue, (unsigned)i);
-      snprintf(query, MAX_COMMAND_LENGTH, "UPDATE accounts SET balance=%u WHERE name='%s';", (unsigned)i, residue);
+      username = sqlite3_column_text(lookup, 0);
+      balance = amount + sqlite3_column_int(lookup, 1);
+      /* TODO check for issues with integer overflow */
+      printf("Adding $%li brings %s's account to $%li\n", amount, username, balance);
+      snprintf(query, MAX_COMMAND_LENGTH, "UPDATE accounts SET balance=%li WHERE name='%s';", balance, username);
       assert(sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &replace, &residue) == SQLITE_OK);
       assert(sqlite3_step(replace) == SQLITE_DONE);
       assert(sqlite3_reset(replace) == SQLITE_OK);
     }
   } else {
+    /* TODO this doesn't actually catch blank results */
     printf("ERROR: no account found for '%s'", args);
   }
   sqlite3_finalize(lookup);
