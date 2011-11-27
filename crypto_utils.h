@@ -192,8 +192,11 @@ print_keystore(FILE * fp)
 {
   struct key_list_t * current;
 
-  fprintf(fp, "KEYSTORE (SEED: '%s') [TTL: %li] CREATED: %s", keystore.key,
-    (long)(keystore.expires - keystore.issued), ctime(&keystore.issued));
+  fprintf(fp, "KEYSTORE (SEED: '%s') [TTL: %li/%li] CREATED: %s",
+    keystore.key,
+    (long)(keystore.expires - time(NULL)),
+    (long)(keystore.expires - keystore.issued),
+    ctime(&keystore.issued));
 
   current = &keystore;
   while (current) {
