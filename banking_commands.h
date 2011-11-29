@@ -56,7 +56,7 @@ deposit_command(char *);
 
 typedef int (*command)(char *);
 
-struct command_t
+struct command_info_t
 {
   char * name;
   command function;
@@ -65,7 +65,7 @@ struct command_t
 
 #define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) }
 
-const struct command_t commands[] =
+const struct command_info_t commands[] =
 {
   #ifdef USE_LOGIN
   INIT_COMMAND(login),
