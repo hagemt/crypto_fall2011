@@ -32,12 +32,69 @@
 
 #include "banking_constants.h"
 
+/*** KEYSTORE, ISSUING AND REVOCATION ****************************************/
+
 struct
 key_list_t {
   time_t issued, expires;
   unsigned char * key;
   struct key_list_t * next;
 } keystore;
+
+int
+request_key(unsigned char ** key)
+{
+  struct key_list_t * current;
+
+  /* Attempt to produce a new key */
+  if ((*key = gcry_random_bytes_secure(BANKING_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
+    /* Advance to the most recent key */
+    current = &keystore;
+    while (current->next) {
+      current = current->next;
+    }
+
+    /* Initialize this key */
+    if ((current->next = malloc(sizeof(struct key_list_t)))) {
+      current = current->next;
+      current->expires = time(&current->issued) + AUTH_KEY_TIMEOUT;
+      current->key = *key;
+      current->next = NULL;
+
+      return BANKING_OK;
+    }
+    gcry_free(*key);
+    *key = NULL;
+  }
+  return BANKING_ERROR;
+}
+
+int
+revoke_key(unsigned char * key)
+{
+  struct key_list_t * current;
+
+  /* Check if the keystore is valid */
+  if (keystore.issued < keystore.expires) {
+    /* Check all the keys */
+    current = keystore.next;
+    while (current) {
+      /* Check if this key matches and is still fresh */
+      if (strncmp((char *)current->key, (char *)key, BANKING_KEY_LENGTH)) {
+        current = current->next;
+      } else if (current->issued < current->expires) {
+        /* If so, force it to expire */
+        current->expires = current->issued;
+        gcry_free(current->key);
+        current->key = NULL;
+        return BANKING_OK;
+      }
+    }
+  }
+  return BANKING_ERROR;
+}
+
+/*** INITIALIZATION AND TERMINATION ******************************************/
 
 int
 init_crypto()
@@ -97,84 +154,37 @@ shutdown_crypto()
   gcry_control(GCRYCTL_TERM_SECMEM);
 }
 
-int
-request_key(unsigned char ** key)
-{
-  struct key_list_t * current;
-
-  /* Attempt to produce a new key */
-  if ((*key = gcry_random_bytes_secure(BANKING_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
-    /* Advance to the most recent key */
-    current = &keystore;
-    while (current->next) {
-      current = current->next;
-    }
-
-    /* Initialize this key */
-    if ((current->next = malloc(sizeof(struct key_list_t)))) {
-      current = current->next;
-      current->expires = time(&current->issued) + AUTH_KEY_TIMEOUT;
-      current->key = *key;
-      current->next = NULL;
-
-      return BANKING_OK;
-    }
-    gcry_free(*key);
-    *key = NULL;
-  }
-  return BANKING_ERROR;
-}
-
-int
-revoke_key(unsigned char * key)
-{
-  struct key_list_t * current;
-
-  /* Check if the keystore is valid */
-  if (keystore.issued < keystore.expires) {
-    /* Check all the keys */
-    current = keystore.next;
-    while (current) {
-      /* Check if this key matches and is still fresh */
-      if (strncmp((char *)current->key, (char *)key, BANKING_KEY_LENGTH)) {
-        current = current->next;
-      } else if (current->issued < current->expires) {
-        /* If so, force it to expire */
-        current->expires = current->issued;
-        gcry_free(current->key);
-        current->key = NULL;
-        return BANKING_OK;
-      }
-    }
-  }
-  return BANKING_ERROR;
-}
+/*** ENCRYPTION AND DECRYPTION ***********************************************/
 
 void
-encrypt_command(unsigned char * input, void * key, unsigned char * output)
+encrypt_command(char * input, void * key, unsigned char * output)
 {
   /* gcry_error_t error_code; */
   gcry_cipher_hd_t handle;
 
   gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
   gcry_cipher_setkey(handle, key, BANKING_KEY_LENGTH);
-  /* gcry_cipher_setiv(handle, void * iv, size_t len); */
-  gcry_cipher_encrypt(handle, output, MAX_COMMAND_LENGTH, input, MAX_COMMAND_LENGTH);
+
+  gcry_cipher_encrypt(handle, output, MAX_COMMAND_LENGTH, (unsigned char *)input, MAX_COMMAND_LENGTH);
+
   gcry_cipher_close(handle);
 }
 
 void
-decrypt_command(unsigned char * input, void * key, unsigned char * output)
+decrypt_command(unsigned char * input, void * key, char * output)
 {
   /* gcry_error_t error_code; */
   gcry_cipher_hd_t handle;
 
   gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
   gcry_cipher_setkey(handle, key, BANKING_KEY_LENGTH);
-  /* gcry_cipher_setiv(handle, const void *k, size_t l); */
-  gcry_cipher_decrypt(handle, output, MAX_COMMAND_LENGTH, input, MAX_COMMAND_LENGTH);
+
+  gcry_cipher_decrypt(handle, (unsigned char *)output, MAX_COMMAND_LENGTH, input, MAX_COMMAND_LENGTH);
+
   gcry_cipher_close(handle);
 }
+
+/*** UTILITY FUNCTIONS (INCL. CHECKSUM) **************************************/
 
 inline void
 fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
@@ -185,6 +195,52 @@ fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
     fprintf(fp, "%X%X ", (c[i] & 0xF0) >> 4, (c[i] & 0x0F));
   }
   fprintf(fp, "(%u bits)\n", len * 8);
+}
+
+int
+checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
+{
+  int status;
+  size_t len;
+  unsigned char * temporary = NULL;
+  status = BANKING_OK;
+  len = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
+
+  /* Behavior is dependent upon the status of arguments
+   * If buffer is NULL, cmd is hashed to a temporary array
+   * If buffer points to a NULL, allocate space for the hash here
+   * Otherwise, buffer is assumed to provide a reasonable buffer
+   */
+  if (buffer == NULL) {
+    temporary = malloc(len);
+    buffer = &temporary;
+  } else if (*buffer == NULL) {
+    *buffer = malloc(len);
+  }
+
+  /* Try to take the hash of the command and buffer it */
+  gcry_md_hash_buffer(GCRY_MD_SHA256, *buffer, (const void *)cmd, MAX_COMMAND_LENGTH);
+
+  /* If a digest value was given, check it */
+  if (digest) {
+    status = strncmp((char *)buffer, (char *)digest, len);
+    #ifndef NDEBUG
+    fprintf(stderr, "INFO[%i]: sha256sum('%s')", status, cmd);
+    fprintx(stderr, " ?", digest, len);
+    if (status) {
+      fprintx(stderr, "ERROR: hash above does not match", *buffer, len);
+    }
+  } else {
+    fprintf(stderr, "INFO: sha256sum('%s')", cmd);
+    fprintx(stderr, " =", *buffer, len);
+    #endif
+  }
+
+  /* If a temporary buffer was allocated, release it */
+  if (temporary) {
+    free(temporary);
+  }
+  return status;
 }
 
 void
@@ -204,7 +260,7 @@ print_keystore(FILE * fp)
       fprintx(fp, "\tENTRY", current->key, BANKING_KEY_LENGTH);
       fprintf(fp, "\t\tEXPIRES: %s", ctime(&current->expires));
     } else {
-      fprintf(fp, "\tENTRY: REVOKED\n");
+      fprintf(fp, "\tENTRY REVOKED\n");
     }
     fprintf(fp, "\t\tISSUED:  %s", ctime(&current->issued));
     current = current->next;
@@ -216,13 +272,14 @@ print_keystore(FILE * fp)
 int
 test_cryptosystem()
 {
-  unsigned char * m, * c, * p, * k;
+  char * m, * p;
+  unsigned char * c, * k, * s;
 
-  m = calloc(MAX_COMMAND_LENGTH, sizeof(unsigned char));
-  c = calloc(MAX_COMMAND_LENGTH, sizeof(unsigned char));
-  p = calloc(MAX_COMMAND_LENGTH, sizeof(unsigned char));
+  m = calloc(MAX_COMMAND_LENGTH, sizeof(char));
+  c = calloc(MAX_COMMAND_LENGTH, sizeof(char));
+  p = calloc(MAX_COMMAND_LENGTH, sizeof(char));
 
-  strncpy((char *)m, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
+  strncpy(m, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
 
   print_keystore(stderr);
   if (request_key(&k)) {
@@ -235,7 +292,7 @@ test_cryptosystem()
   decrypt_command(c, k, p);
 
   fprintf(stderr, "MSG: '%s'\n", m);
-  fprintx(stderr, "RAW", m, MAX_COMMAND_LENGTH);
+  fprintx(stderr, "RAW", (unsigned char *)m, MAX_COMMAND_LENGTH);
   fprintx(stderr, "KEY", k, BANKING_KEY_LENGTH);
   fprintx(stderr, "ENC", c, MAX_COMMAND_LENGTH);
   fprintf(stderr, "DEC: '%s'\n", p);
@@ -249,6 +306,14 @@ test_cryptosystem()
     fprintf(stderr, "WARNING: cannot release key\n");
   }
   print_keystore(stderr);
+
+  s = NULL;
+  if (checksum(m, NULL, &s)) {
+    fprintf(stderr, "ERROR: cannot checksum message\n");
+  }
+  if (checksum(m, s, NULL)) {
+    fprintf(stderr, "ERROR: cannot verify message checksum\n");
+  }
 
   free(m);
   free(c);
