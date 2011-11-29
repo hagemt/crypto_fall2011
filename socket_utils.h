@@ -56,7 +56,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   port_num = strtol(port, &residue, 10);
   #ifndef NDEBUG
   if (residue == NULL || *residue != '\0') {
-    fprintf(stderr, "WARNING: ignoring extraneous characters\n");
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
   }
   printf("INFO: will attempt to open port %li\n", port_num);
   /* TODO look more closely at overflow
