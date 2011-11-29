@@ -43,9 +43,14 @@ mark_as_advanced(CMAKE_VERBOSE_MAKEFILE)
 # Libraries
 
 if(BUILD_ATM OR BUILD_BANK)
-  # Find readline
   find_library(READLINE_LIBRARY_PATH readline)
+  find_library(CRYPTO_LIBRARY_PATH gcrypt)
 endif(BUILD_ATM OR BUILD_BANK)
+
+if(BUILD_BANK)
+  find_library(SQLITE_LIBRARY_PATH sqlite3)
+  find_library(THREAD_LIBRARY_PATH pthread)
+endif(BUILD_BANK)
 
 if(BUILD_ATM)
   # Add readline
@@ -55,7 +60,6 @@ if(BUILD_ATM)
     message(FATAL_ERROR "Cannot find readline library")
   endif(READLINE_LIBRARY_PATH)
   # Add gcrypt
-  find_library(CRYPTO_LIBRARY_PATH gcrypt)
   if(CRYPTO_LIBRARY_PATH)
     set(ATM_LIBRARIES ${ATM_LIBRARIES} ${CRYPTO_LIBRARY_PATH})
   else(CRYPTO_LIBRARY_PATH)
@@ -70,15 +74,19 @@ if(BUILD_BANK)
   else(READLINE_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find readline library")
   endif(READLINE_LIBRARY_PATH)
+  # Add gcrypt
+  if(CRYPTO_LIBRARY_PATH)
+    set(ATM_LIBRARIES ${BANK_LIBRARIES} ${CRYPTO_LIBRARY_PATH})
+  else(CRYPTO_LIBRARY_PATH)
+    message(FATAL_ERROR "Cannot find crypto library")
+  endif(CRYPTO_LIBRARY_PATH)
   # Add sqlite3
-  find_library(SQLITE_LIBRARY_PATH sqlite3)
   if(SQLITE_LIBRARY_PATH)
     set(BANK_LIBRARIES ${BANK_LIBRARIES} ${SQLITE_LIBRARY_PATH})
   else(SQLITE_LIBRARY_PATH)
     message(FATAL_ERROR "Cannot find sqlite library")
   endif(SQLITE_LIBRARY_PATH)
   # Add pthreads
-  find_library(THREAD_LIBRARY_PATH pthread)
   if(THREAD_LIBRARY_PATH)
     set(BANK_LIBRARIES ${BANK_LIBRARIES} ${THREAD_LIBRARY_PATH})
   else(THREAD_LIBRARY_PATH)
