@@ -33,29 +33,43 @@
 #define USE_LOGOUT
 #define USE_TRANSFER
 #include "banking_commands.h"
+
 #include "crypto_utils.h"
 #include "socket_utils.h"
 
 struct client_session_data_t {
   int sock;
   char * user;
-  int key;
-  /* TODO? char buffer[MAX_COMMAND_LENGTH]; */
+  unsigned char * key;
+  char pbuffer[MAX_COMMAND_LENGTH];
+  unsigned char cbuffer[MAX_COMMAND_LENGTH];
+  char tbuffer[MAX_COMMAND_LENGTH];
 } session_data;
 
+inline void
+reverse_command(char * cmd) {
+  size_t i, j;
+  for (i = 0, j = MAX_COMMAND_LENGTH - 1; i < j; ++i, --j) {
+    cmd[i] ^= cmd[j];
+    cmd[j] ^= cmd[i];
+    cmd[i] ^= cmd[j];
+  }
+}
+
 int
-authenticated(struct client_session_data_t * session_data) {
-  char response_buffer[MAX_COMMAND_LENGTH];
-  send(session_data->sock, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG), 0);
-  recv(session_data->sock, response_buffer, MAX_COMMAND_LENGTH, 0);
-  response_buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-  #ifndef NDEBUG
-  fprintf(stderr, "INFO: recv '%s'\n", response_buffer);
-  #endif
-  memset(response_buffer, 0, MAX_COMMAND_LENGTH);
-  /* TODO perform actual authentication */
+authenticated(struct client_session_data_t * session_data)
+{
   if (session_data->key) {
-    return BANKING_OK;
+    snprintf(session_data->pbuffer, sizeof(AUTH_CHECK_MSG), AUTH_CHECK_MSG);
+    encrypt_command(session_data->pbuffer, session_data->key, session_data->cbuffer);
+    send(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
+
+    recv(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
+    decrypt_command(session_data->cbuffer, session_data->key, session_data->tbuffer);
+    reverse_command(session_data->tbuffer);
+    if (!strncmp((char *)session_data->cbuffer, session_data->tbuffer, MAX_COMMAND_LENGTH)) {
+      return BANKING_OK;
+    }
   }
   return BANKING_ERROR;
 }
@@ -67,12 +81,12 @@ login_command(char * cmd)
   if (authenticated(&session_data)) {
     /* TODO better way to fetch PIN? */
     if ((pin = readline(PIN_PROMPT))) {
-      session_data.key = 1;
+      request_key(&session_data.key);
       /* TODO perform actual authorization */
       msg = malloc(2 * MAX_COMMAND_LENGTH);
       snprintf(msg, MAX_COMMAND_LENGTH, "login %s %s", cmd, pin);
-      free(pin);
       send(session_data.sock, msg, MAX_COMMAND_LENGTH, 0);
+      free(pin);
       free(msg);
     }
     if (authenticated(&session_data)) {
@@ -122,7 +136,7 @@ logout_command(char * cmd)
   if (authenticated(&session_data)) {
     printf("You did not 'login' first.\n");
   } else {
-    session_data.key = 0;
+    revoke_key(session_data.key);
     /* TODO proper deauthorization */
     send(session_data.sock, "logout", 7, 0);
     assert(*cmd == '\0');
@@ -174,8 +188,6 @@ main(int argc, char ** argv)
 
   /* Issue an interactive prompt, terminate only on failure */
   for (caught_signal = 0; !caught_signal && (in = readline(SHELL_PROMPT));) {
-    /* TODO for now, just toggle validation */
-    session_data.key = !session_data.key;
     /* Read in a line, then attempt to associate it with a command */
     if (validate(in, &cmd, &args)) {
       /* Ignore empty commands */
@@ -201,3 +213,4 @@ main(int argc, char ** argv)
   printf("\n");
   return EXIT_SUCCESS;
 }
+
