@@ -29,14 +29,11 @@
 #include <signal.h>
 
 /* Local includes */
-#include "banking_constants.h"
-
 #define USE_BALANCE
 #define USE_DEPOSIT
+#include "banking_constants.h"
 #include "banking_commands.h"
-
 #include "socket_utils.h"
-
 #include "db_utils.h"
 
 struct server_session_data_t {
@@ -50,31 +47,38 @@ int
 balance_command(char * args)
 {
   size_t len, i;
-  char * query, * username;
+  char * username;
+  long int balance;
   const char * residue;
-  sqlite3_stmt * statement;
-  /* Advance args to the first token, this is the username */
+
+  /* Advance to the first token, this is the username */
   len = strnlen(args, MAX_COMMAND_LENGTH);
   for (i = 0; *args == ' ' && i < len; ++i, ++args);
   for (username = args; *args != '\0' && i < len; ++i, ++args) {
     if (*args == ' ') { *args = '\0'; i = len; }
   }
-  if (*args != '\0') {
-    printf("WARNING: ignoring '%s' residue\n", args);
+  len = strnlen(username, (size_t)(args - username));
+
+  /* The remainder is residue */
+  residue = (const char *)args;
+  #ifndef NDEBUG
+  if (*residue != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
   }
-  /* Construct query string and prepare the statement */
-  query = malloc(2 * MAX_COMMAND_LENGTH);
-  snprintf(query, MAX_COMMAND_LENGTH, "SELECT * FROM accounts WHERE name='%s';", username);
-  if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &statement, &residue) == SQLITE_OK) {
-    while (sqlite3_step(statement) != SQLITE_DONE) {
-      residue = (const char *)sqlite3_column_text(statement, 0);
-      printf("%s's balance is $%i\n", residue, sqlite3_column_int(statement, 1));
-    }
+  #endif
+
+  /* Prepare the statement and run the query */
+  if (do_lookup(session_data.db_conn, &residue, username, len, &balance)) {
+    fprintf(stderr, "ERROR: no account found for '%s'\n", username);
   } else {
-    printf("ERROR: no account found for '%s'\n", args);
+    printf("%s's balance is $%li\n", username, balance);
   }
-  sqlite3_finalize(statement);
-  free(query);
+  #ifndef NDEBUG
+  if (*residue != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (query residue)\n", residue);
+  }
+  #endif
+
   return BANKING_OK;
 }
 
@@ -82,57 +86,61 @@ int
 deposit_command(char * args)
 {
   size_t len, i;
-  long int amount, balance;
+  char * username;
   const char * residue;
-  char * query, * username;
-  sqlite3_stmt * lookup, * replace;
+  long int amount, balance;
+
   /* Advance args to the first token, this is the username */
   len = strnlen(args, MAX_COMMAND_LENGTH);
   for (i = 0; *args == ' ' && i < len; ++i, ++args);
   for (username = args; *args != '\0' && i < len; ++i, ++args) {
     if (*args == ' ') { *args = '\0'; i = len; }
   }
+  len = strnlen(username, (size_t)(args - username));
+
   /* We should now be at the addition amount */
   amount = strtol(args, (char **)(&residue), 10);
+  #ifndef NDEBUG
   if (*residue != '\0') {
-    printf("WARNING: ignoring '%s' residue\n", residue);
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
   }
+  #endif
+
+  /* Ensure the transaction amount is sane */
   if (amount < -MAX_TRANSACTION || amount > MAX_TRANSACTION) {
-    printf("ERROR: amount (%i) exceeds maximum transaction (%i)\n", amount, MAX_TRANSATION);
+    fprintf(stderr, "ERROR: amount (%li) exceeds maximum transaction (%i)\n", amount, MAX_TRANSACTION);
     return BANKING_OK;
   }
-  query = malloc(2 * MAX_COMMAND_LENGTH);
-  /* TODO fix this glaring injection vulnerability */
-  snprintf(query, MAX_COMMAND_LENGTH, "SELECT * FROM accounts WHERE name='%s';", username);
-  if (sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &lookup, &residue) == SQLITE_OK) {
-    while (sqlite3_step(lookup) != SQLITE_DONE) {
-      username = sqlite3_column_text(lookup, 0);
-      balance = amount + sqlite3_column_int(lookup, 1);
-      /* TODO check for issues with integer overflow */
-      printf("Adding $%li brings %s's account to $%li\n", amount, username, balance);
-      snprintf(query, MAX_COMMAND_LENGTH, "UPDATE accounts SET balance=%li WHERE name='%s';", balance, username);
-      assert(sqlite3_prepare(session_data.db_conn, query, MAX_COMMAND_LENGTH, &replace, &residue) == SQLITE_OK);
-      assert(sqlite3_step(replace) == SQLITE_DONE);
-      assert(sqlite3_reset(replace) == SQLITE_OK);
-    }
+
+  /* Prepare and run actual queries */
+  if (
+      do_lookup(session_data.db_conn, &residue, username, len, &balance) ||
+      do_update(session_data.db_conn, &residue, username, len, balance + amount)
+     ) {
+    fprintf(stderr, "ERROR: no account found for '%s'", username);
   } else {
-    /* TODO this doesn't actually catch blank results */
-    printf("ERROR: no account found for '%s'", args);
+    printf("Adding $%li brings %s's account to $%li\n", amount, username, balance + amount);
   }
-  sqlite3_finalize(lookup);
-  sqlite3_finalize(replace);
-  free(query);
+  #ifndef NDEBUG
+  if (*residue != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (query residue)\n", residue);
+  }
+  #endif
+
   return BANKING_OK;
 }
 
 void
-handle_signal(int i)
+handle_signal(int sig)
 {
+  size_t i;
   printf("\n");
-  session_data.caught_signal = i;
+  session_data.caught_signal = sig;
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
+      #ifndef NDEBUG
       fprintf(stderr, "INFO: sending SIGTERM to worker thread\n");
+      #endif
       pthread_kill(session_data.tids[i], SIGTERM);
     }
   }
@@ -141,20 +149,27 @@ handle_signal(int i)
       if (pthread_join(session_data.tids[i], NULL)) {
         fprintf(stderr, "ERROR: failed to collect worker thread\n");
       } else {
+        #ifndef NDEBUG
         fprintf(stderr, "INFO: collected worker thread\n");
+        #endif
         session_data.tids[i] = (pthread_t)(BANKING_OK);
       }
     }
   }
   pthread_mutex_destroy(&session_data.accept_mutex);
   destroy_socket(session_data.sock);
-  /* TODO fix issue with database never closing */
   destroy_db(NULL, session_data.db_conn);
+  if (sig == SIGINT) {
+    signal(SIGINT, SIG_DFL);
+    kill(getpid(), SIGINT);
+  }
 }
 
 inline void
 retire(int sig) {
+  #ifndef NDEBUG
   fprintf(stderr, "INFO: worker thread retiring [signal %i]\n", sig);
+  #endif
   pthread_exit(NULL);
 }
 
@@ -172,7 +187,9 @@ handle_client(void * arg)
 
   /* Fetch the ID from the argument */
   tid = (pthread_t *)arg;
+  #ifndef NDEBUG
   fprintf(stderr, "[thread %lu] INFO: worker started\n", *tid);
+  #endif
 
   /* As long as possible, grab up whatever connection is available */
   while (!session_data.caught_signal) {
@@ -180,15 +197,16 @@ handle_client(void * arg)
     conn = accept(session_data.sock, (struct sockaddr *)(&remote_addr), &addr_len);
     pthread_mutex_unlock(&session_data.accept_mutex);
     if (conn >= 0) {
+      #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", *tid);
       recv(conn, buffer, MAX_COMMAND_LENGTH, 0);
-      #ifndef NDEBUG
       buffer[MAX_COMMAND_LENGTH - 1] = '\0';
       fprintf(stderr, "[thread %lu] RECV: '%s'\n", *tid, buffer);
       #endif
       destroy_socket(conn);
     } else {
       fprintf(stderr, "[thread %lu] ERROR: worker failed to accept client\n", *tid);
+      /* TODO wait, or break? */
     }
   }
 
@@ -229,7 +247,6 @@ main(int argc, char ** argv)
     }
   }
   signal(SIGINT, handle_signal);
-  signal(SIGTERM, handle_signal);
 
   /* Issue an interactive prompt, only quit on signal */
   while (!session_data.caught_signal && (in = readline(SHELL_PROMPT))) {
@@ -249,6 +266,7 @@ main(int argc, char ** argv)
     free(in);
     in = NULL;
   }
+
   handle_signal(SIGTERM);
   return EXIT_SUCCESS;
 }
