@@ -50,9 +50,9 @@
 
 /* Static SQL query strings, fillable at question marks */
 #define SQL_CMD_CREATE_TABLE   "CREATE TABLE accounts(name, balance INTEGER);"
-#define SQL_CMD_INSERT_ACCOUNT "INSERT INTO accounts VALUES(?, ?);"
-#define SQL_CMD_LOOKUP_BALANCE "SELECT balance FROM accounts WHERE name=?;"
-#define SQL_CMD_UPDATE_BALANCE "UPDATE accounts SET balance=? WHERE name=?;"
-#define SQL_CMD_SELECT_ALL     "SELECT * FROM accounts;"
+#define SQL_CMD_INSERT_ACCOUNT "INSERT INTO accounts VALUES($name, $balance);"
+#define SQL_CMD_LOOKUP_BALANCE "SELECT balance FROM accounts WHERE name LIKE $name;"
+#define SQL_CMD_UPDATE_BALANCE "UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
+#define SQL_CMD_SELECT_ALL     "SELECT name, balance FROM accounts;"
 
 #endif

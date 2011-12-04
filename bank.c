@@ -113,13 +113,12 @@ deposit_command(char * args)
   }
 
   /* Prepare and run actual queries */
-  if (
-      do_lookup(session_data.db_conn, &residue, username, len, &balance) ||
-      do_update(session_data.db_conn, &residue, username, len, balance + amount)
-     ) {
-    fprintf(stderr, "ERROR: no account found for '%s'", username);
+  if (do_lookup(session_data.db_conn, &residue, username, len, &balance)) {
+    fprintf(stderr, "ERROR: no account found for '%s'\n", username);
+  } else if (do_update(session_data.db_conn, &residue, username, len, balance + amount)) {
+    fprintf(stderr, "ERROR: unable to complete request on ('%s', %li)\n", username, balance);
   } else {
-    printf("Adding $%li brings %s's account to $%li\n", amount, username, balance + amount);
+    printf("A transaction of $%li brings %s's balance from $%li to $%li\n", amount, username, balance, balance + amount);
   }
   #ifndef NDEBUG
   if (*residue != '\0') {
