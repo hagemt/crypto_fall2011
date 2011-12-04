@@ -79,7 +79,7 @@ balance_command(char * args)
   }
   #endif
 
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 int
@@ -109,7 +109,7 @@ deposit_command(char * args)
   /* Ensure the transaction amount is sane */
   if (amount < -MAX_TRANSACTION || amount > MAX_TRANSACTION) {
     fprintf(stderr, "ERROR: amount (%li) exceeds maximum transaction (%i)\n", amount, MAX_TRANSACTION);
-    return BANKING_OK;
+    return BANKING_SUCCESS;
   }
 
   /* Prepare and run actual queries */
@@ -127,7 +127,7 @@ deposit_command(char * args)
   }
   #endif
 
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 void
@@ -135,27 +135,34 @@ handle_signal(int sig)
 {
   size_t i;
   printf("\n");
+  /* Perform a graceful shutdown of the system */
   session_data.caught_signal = sig;
+
+  /* Send SIGTERM to every worker */
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
+    if (session_data.tids[i] != (pthread_t)(BANKING_FAILURE)) {
       #ifndef NDEBUG
       fprintf(stderr, "INFO: sending SIGTERM to worker thread\n");
       #endif
       pthread_kill(session_data.tids[i], SIGTERM);
     }
   }
+
+  /* Now collect them */
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    if (session_data.tids[i] != (pthread_t)(BANKING_ERROR)) {
+    if (session_data.tids[i] != (pthread_t)(BANKING_FAILURE)) {
       if (pthread_join(session_data.tids[i], NULL)) {
         fprintf(stderr, "ERROR: failed to collect worker thread\n");
       } else {
         #ifndef NDEBUG
         fprintf(stderr, "INFO: collected worker thread\n");
         #endif
-        session_data.tids[i] = (pthread_t)(BANKING_OK);
+        session_data.tids[i] = (pthread_t)(BANKING_SUCCESS);
       }
     }
   }
+
+  /* Do remaining housekeeping */
   pthread_mutex_destroy(&session_data.accept_mutex);
   destroy_socket(session_data.sock);
   destroy_db(NULL, session_data.db_conn);
@@ -242,7 +249,7 @@ main(int argc, char ** argv)
   pthread_mutex_init(&session_data.accept_mutex, NULL);
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     if (pthread_create(&session_data.tids[i], NULL, &handle_client, &session_data.tids[i])) {
-      session_data.tids[i] = (pthread_t)(BANKING_ERROR);
+      session_data.tids[i] = (pthread_t)(BANKING_FAILURE);
       fprintf(stderr, "WARNING: failed to start worker thread\n");
     }
   }

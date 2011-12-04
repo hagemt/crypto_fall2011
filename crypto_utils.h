@@ -47,7 +47,7 @@ request_key(unsigned char ** key)
   struct key_list_t * current;
 
   /* Attempt to produce a new key */
-  if ((*key = gcry_random_bytes_secure(BANKING_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
+  if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
     /* Advance to the most recent key */
     current = &keystore;
     while (current->next) {
@@ -61,12 +61,12 @@ request_key(unsigned char ** key)
       current->key = *key;
       current->next = NULL;
 
-      return BANKING_OK;
+      return BANKING_SUCCESS;
     }
     gcry_free(*key);
     *key = NULL;
   }
-  return BANKING_ERROR;
+  return BANKING_FAILURE;
 }
 
 int
@@ -80,18 +80,18 @@ revoke_key(unsigned char * key)
     current = keystore.next;
     while (current) {
       /* Check if this key matches and is still fresh */
-      if (strncmp((char *)current->key, (char *)key, BANKING_KEY_LENGTH)) {
+      if (strncmp((char *)current->key, (char *)key, AUTH_KEY_LENGTH)) {
         current = current->next;
       } else if (current->issued < current->expires) {
         /* If so, force it to expire */
         current->expires = current->issued;
         gcry_free(current->key);
         current->key = NULL;
-        return BANKING_OK;
+        return BANKING_SUCCESS;
       }
     }
   }
-  return BANKING_ERROR;
+  return BANKING_FAILURE;
 }
 
 /*** INITIALIZATION AND TERMINATION ******************************************/
@@ -101,7 +101,7 @@ init_crypto()
 {
   /* Reset the keystore */
   keystore.expires = time(&keystore.issued) + AUTH_KEY_TIMEOUT * AUTH_KEY_TIMEOUT;
-  keystore.key = malloc(BANKING_KEY_LENGTH * sizeof(unsigned char));
+  keystore.key = malloc(AUTH_KEY_LENGTH * sizeof(unsigned char));
   strncpy((char *)keystore.key, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));;
   keystore.next = NULL;
 
@@ -113,7 +113,7 @@ init_crypto()
   /* Verify the correct version has been linked */
   if (!gcry_check_version(GCRYPT_VERSION)) {
     fprintf(stderr, "ERROR: libgcrypt version mismatch\n");
-    return BANKING_ERROR;
+    return BANKING_FAILURE;
   }
 
   /* Set up secure memory pool */
@@ -125,9 +125,9 @@ init_crypto()
   gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
   if (!gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P)) {
     fprintf(stderr, "ERROR: gcrypt was not properly initialized\n");
-    return BANKING_ERROR;
+    return BANKING_FAILURE;
   }
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 void
@@ -163,7 +163,7 @@ encrypt_command(char * input, void * key, unsigned char * output)
   gcry_cipher_hd_t handle;
 
   gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
-  gcry_cipher_setkey(handle, key, BANKING_KEY_LENGTH);
+  gcry_cipher_setkey(handle, key, AUTH_KEY_LENGTH);
 
   gcry_cipher_encrypt(handle, output, MAX_COMMAND_LENGTH, (unsigned char *)input, MAX_COMMAND_LENGTH);
 
@@ -177,7 +177,7 @@ decrypt_command(unsigned char * input, void * key, char * output)
   gcry_cipher_hd_t handle;
 
   gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
-  gcry_cipher_setkey(handle, key, BANKING_KEY_LENGTH);
+  gcry_cipher_setkey(handle, key, AUTH_KEY_LENGTH);
 
   gcry_cipher_decrypt(handle, (unsigned char *)output, MAX_COMMAND_LENGTH, input, MAX_COMMAND_LENGTH);
 
@@ -203,7 +203,7 @@ checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
   int status;
   size_t len;
   unsigned char * temporary = NULL;
-  status = BANKING_OK;
+  status = BANKING_SUCCESS;
   len = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
 
   /* Behavior is dependent upon the status of arguments
@@ -257,7 +257,7 @@ print_keystore(FILE * fp)
   current = &keystore;
   while (current) {
     if (current->key) {
-      fprintx(fp, "\tENTRY", current->key, BANKING_KEY_LENGTH);
+      fprintx(fp, "\tENTRY", current->key, AUTH_KEY_LENGTH);
       fprintf(fp, "\t\tEXPIRES: %s", ctime(&current->expires));
     } else {
       fprintf(fp, "\tENTRY REVOKED\n");
@@ -284,7 +284,7 @@ test_cryptosystem()
   print_keystore(stderr);
   if (request_key(&k)) {
     fprintf(stderr, "ERROR: cannot obtain key\n");
-    return BANKING_ERROR;
+    return BANKING_FAILURE;
   }
   print_keystore(stderr);
 
@@ -293,7 +293,7 @@ test_cryptosystem()
 
   fprintf(stderr, "MSG: '%s'\n", m);
   fprintx(stderr, "RAW", (unsigned char *)m, MAX_COMMAND_LENGTH);
-  fprintx(stderr, "KEY", k, BANKING_KEY_LENGTH);
+  fprintx(stderr, "KEY", k, AUTH_KEY_LENGTH);
   fprintx(stderr, "ENC", c, MAX_COMMAND_LENGTH);
   fprintf(stderr, "DEC: '%s'\n", p);
   if (strncmp((char *)m, (char *)p, MAX_COMMAND_LENGTH)) {
@@ -319,7 +319,7 @@ test_cryptosystem()
   free(c);
   free(p);
 
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 #endif

@@ -68,10 +68,10 @@ authenticated(struct client_session_data_t * session_data)
     decrypt_command(session_data->cbuffer, session_data->key, session_data->tbuffer);
     reverse_command(session_data->tbuffer);
     if (!strncmp((char *)session_data->cbuffer, session_data->tbuffer, MAX_COMMAND_LENGTH)) {
-      return BANKING_OK;
+      return BANKING_SUCCESS;
     }
   }
-  return BANKING_ERROR;
+  return BANKING_FAILURE;
 }
 
 int
@@ -95,7 +95,7 @@ login_command(char * cmd)
   } else {
     printf("You must 'logout' first.\n");
   }
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 int
@@ -111,7 +111,7 @@ balance_command(char * cmd)
     printf("%s\n", response_buffer);
   }
   memset(response_buffer, 0, MAX_COMMAND_LENGTH);
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 int
@@ -127,7 +127,7 @@ withdraw_command(char * cmd)
     printf("%s\n", response_buffer);
   }
   memset(response_buffer, 0, MAX_COMMAND_LENGTH);
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 int
@@ -144,9 +144,9 @@ logout_command(char * cmd)
   /* Ensure we are not authenticated */
   if (!authenticated(&session_data)) {
     fprintf(stderr, "MISAUTHORIZATION DETECTED\n");
-    return BANKING_ERROR;
+    return BANKING_FAILURE;
   }
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 int
@@ -162,7 +162,7 @@ transfer_command(char * cmd)
     printf("%s\n", response_buffer);
   }
   memset(response_buffer, 0, MAX_COMMAND_LENGTH);
-  return BANKING_OK;
+  return BANKING_SUCCESS;
 }
 
 int

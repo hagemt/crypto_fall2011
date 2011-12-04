@@ -19,36 +19,40 @@
 #ifndef BANKING_CONSTANTS_H
 #define BANKING_CONSTANTS_H
 
+/* AAA settings */
+#define AUTH_CHECK_MSG "Are you still there?"
+
+#define AUTH_KEY_LENGTH   32 /* In bytes, so use 256-bit keys */
+#define AUTH_KEY_TIMEOUT 300 /* TTL in seconds of ephemeral keys */
+
+/* Misc. banking constants */
 #define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
 #define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
 
-#define AUTH_CHECK_MSG "Are you still there?"
-#define AUTH_KEY_TIMEOUT 300
+#define BANKING_SUCCESS  0
+#define BANKING_FAILURE -1
 
-#define BANKING_SECMEM 0x7FFF
+#define BANKING_ADDRESS "127.0.0.1"
 
-#define BANKING_OK     0
-#define BANKING_ERROR -1
+#define BANKING_SECMEM  0x7FFF
 
-#define LOCAL_ADDRESS "127.0.0.1"
-
+/* Numeric limits */
 #define MIN_PORT_NUM 0x0400
 #define MAX_PORT_NUM 0xFFFF
 
-#define BANKING_KEY_LENGTH 32
 #define MAX_COMMAND_LENGTH 80
-
-#define MAX_CONNECTIONS 5
-
+#define MAX_CONNECTIONS     5
 #define MAX_TRANSACTION 10000
 
+/* Prompt strings */
 #define SHELL_PROMPT "[banking] $ "
 #define PIN_PROMPT   "Enter PIN: "
 
+/* Static SQL query strings, fillable at question marks */
 #define SQL_CMD_CREATE_TABLE   "CREATE TABLE accounts(name, balance INTEGER);"
 #define SQL_CMD_INSERT_ACCOUNT "INSERT INTO accounts VALUES(?, ?);"
-#define SQL_CMD_LOOKUP_BALANCE "SELECT balance FROM accounts WHERE name='?';"
-#define SQL_CMD_UPDATE_BALANCE "UPDATE accounts SET balance=? WHERE name='?';"
+#define SQL_CMD_LOOKUP_BALANCE "SELECT balance FROM accounts WHERE name=?;"
+#define SQL_CMD_UPDATE_BALANCE "UPDATE accounts SET balance=? WHERE name=?;"
 #define SQL_CMD_SELECT_ALL     "SELECT * FROM accounts;"
 
 #endif
