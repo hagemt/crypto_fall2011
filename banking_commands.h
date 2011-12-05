@@ -56,8 +56,7 @@ deposit_command(char *);
 
 typedef int (*command)(char *);
 
-struct command_info_t
-{
+struct command_info_t {
   char * name;
   command function;
   size_t length;
@@ -65,8 +64,7 @@ struct command_info_t
 
 #define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) }
 
-const struct command_info_t commands[] =
-{
+const struct command_info_t commands[] = {
   #ifdef USE_LOGIN
   INIT_COMMAND(login),
   #endif
@@ -85,7 +83,7 @@ const struct command_info_t commands[] =
   #ifdef USE_DEPOSIT
   INIT_COMMAND(deposit),
   #endif
-  { "quit", NULL, 5 }
+  { "quit", NULL, sizeof("quit") }
 };
 
 int
@@ -93,7 +91,9 @@ validate(char * cmd, command * fun, char ** args)
 {
   int invalid;
   size_t i, len;
+
   len = strnlen(cmd, MAX_COMMAND_LENGTH);
+
   /* Advance cmd to the first non-space character */
   for (i = 0; *cmd == ' ' && i < len; ++i, ++cmd);
   /* Locate the first blank space after the command */
@@ -101,6 +101,7 @@ validate(char * cmd, command * fun, char ** args)
     /* We want to terminate here, the args follow */
     if (**args == ' ') { **args = '\0'; i = len; }
   }
+
   /* Interate through all known commands with valid functions */
   for (i = 0; commands[i].function;) {
     assert(commands[i].length <= MAX_COMMAND_LENGTH);
@@ -110,6 +111,7 @@ validate(char * cmd, command * fun, char ** args)
   }
   /* The function is valid, or may be NULL for the final command */
   *fun = commands[i].function;
+
   /* Non-zero return value iff invalid and not final command */
   return invalid && strncmp(commands[i].name, cmd, commands[i].length);
 }

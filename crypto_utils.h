@@ -194,7 +194,7 @@ fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
   for (i = 0; i < len; ++i) {
     fprintf(fp, "%X%X ", (c[i] & 0xF0) >> 4, (c[i] & 0x0F));
   }
-  fprintf(fp, "(%u bits)\n", len * 8);
+  fprintf(fp, "(%u bits)\n", (unsigned)(len * 8));
 }
 
 int
