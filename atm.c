@@ -26,16 +26,48 @@
 #include <readline/history.h>
 
 /* Local includes */
-#include "banking_constants.h"
 #define USE_LOGIN
 #define USE_BALANCE
 #define USE_WITHDRAW
 #define USE_LOGOUT
 #define USE_TRANSFER
 #include "banking_commands.h"
+#include "banking_constants.h"
 
 #include "crypto_utils.h"
 #include "socket_utils.h"
+
+/* UTILITIES *****************************************************************/
+
+/*! \brief Obfuscate a message into a buffer, filling the remainder with nonce
+ *  
+ *  \param msg     A raw message, which will be trimmed to MAX_COMMAND_LENGTH
+ *  \param salt    Either NULL or data to XOR with the message
+ *  \param buffer  A buffer of size MAX_COMMAND_LENGTH (mandatory)
+ */
+inline void
+salt_and_pepper(char * msg, const char * salt, char * buffer) {
+  size_t i, mlen, slen;
+
+  /* Buffer the first MAX_COMMAND_LENGTH bytes of the message */
+  mlen = strnlen(msg, MAX_COMMAND_LENGTH);
+  strncpy(buffer, msg, mlen);
+
+  /* Salt the message with cyclic copies of the 
+   * (ex. salt = "SALT", msg = "MESSAGE", buffer = "MESSAGE" ^ "SALTSAL")
+   */
+  if (salt) {
+    slen = strnlen(salt, MAX_COMMAND_LENGTH);
+    for (i = 0; i < mlen; ++i) {
+      buffer[i] ^= salt[i % slen];
+    }
+  }
+
+  /* Make sure the message is peppered with nonce */
+  gcry_create_nonce(buffer + mlen, MAX_COMMAND_LENGTH - mlen);
+}
+
+/* SESSION DATA **************************************************************/
 
 struct client_session_data_t {
   int sock;
@@ -47,121 +79,154 @@ struct client_session_data_t {
 } session_data;
 
 inline void
-reverse_command(char * cmd) {
-  size_t i, j;
-  for (i = 0, j = MAX_COMMAND_LENGTH - 1; i < j; ++i, --j) {
-    cmd[i] ^= cmd[j];
-    cmd[j] ^= cmd[i];
-    cmd[i] ^= cmd[j];
+gather_information(struct client_session_data_t * session_data) {
+    encrypt_command(session_data->pbuffer, session_data->key, session_data->cbuffer);
+    send(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
+    recv(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
+    decrypt_command(session_data->cbuffer, session_data->key, session_data->tbuffer);
+}
+
+inline void
+clear_buffers(struct client_session_data_t * session_data) {
+  if (session_data) {
+    memset(session_data->pbuffer, 0, MAX_COMMAND_LENGTH);
+    memset(session_data->cbuffer, 0, MAX_COMMAND_LENGTH);
+    memset(session_data->tbuffer, 0, MAX_COMMAND_LENGTH);
   }
 }
 
 int
 authenticated(struct client_session_data_t * session_data)
 {
-  if (session_data->key) {
-    snprintf(session_data->pbuffer, sizeof(AUTH_CHECK_MSG), AUTH_CHECK_MSG);
-    encrypt_command(session_data->pbuffer, session_data->key, session_data->cbuffer);
-    send(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
-
-    recv(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
-    decrypt_command(session_data->cbuffer, session_data->key, session_data->tbuffer);
-    reverse_command(session_data->tbuffer);
-    if (!strncmp((char *)session_data->cbuffer, session_data->tbuffer, MAX_COMMAND_LENGTH)) {
-      return BANKING_SUCCESS;
+  int i, status;
+  status = BANKING_FAILURE;
+  if (session_data && session_data->key) {
+    salt_and_pepper(AUTH_CHECK_MSG, session_data->user, session_data->pbuffer);
+    gather_information(session_data);
+    /* tbuffer should contain pbuffer reversed */
+    status = BANKING_SUCCESS;
+    for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+      if (session_data->tbuffer[i] != session_data->pbuffer[MAX_COMMAND_LENGTH - i - 1]) {
+        status = BANKING_FAILURE;
+        break;
+      }
     }
+    clear_buffers(session_data);
   }
-  return BANKING_FAILURE;
+  return status;
 }
 
+/* Commands ******************************************************************/
+
 int
-login_command(char * cmd)
+login_command(char * args)
 {
-  char * pin, * msg;
+  size_t i, len;
+  char * pin;
+
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  /* Advance to the first non-space */
+  for (i = 0; *args == ' ' && i < len; ++i, ++args);
+  for (session_data.user = args; *args != '\0' && i < len; ++i, ++args) {
+    if (*args == ' ') { *args = '\0'; i = len; }
+  }
+  len = strnlen(args, (size_t)(args - session_data.user));
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", args);
+  }
+  #endif
+
   if (authenticated(&session_data)) {
-    /* TODO better way to fetch PIN? */
+    request_key(&session_data.key);
+    salt_and_pepper("login", session_data.user, session_data.pbuffer);
+    gather_information(&session_data);
     if ((pin = readline(PIN_PROMPT))) {
-      request_key(&session_data.key);
-      /* TODO perform actual authorization */
-      msg = malloc(2 * MAX_COMMAND_LENGTH);
-      snprintf(msg, MAX_COMMAND_LENGTH, "login %s %s", cmd, pin);
-      send(session_data.sock, msg, MAX_COMMAND_LENGTH, 0);
+      salt_and_pepper(pin, session_data.user, session_data.pbuffer);
+      gather_information(&session_data);
       free(pin);
-      free(msg);
     }
     if (authenticated(&session_data)) {
+      revoke_key(session_data.key);
       printf("AUTHENTICATION FAILURE\n");
     }
+    clear_buffers(&session_data);
   } else {
     printf("You must 'logout' first.\n");
   }
   return BANKING_SUCCESS;
 }
 
+/*! \brief Client side balance command.
+ */
 int
-balance_command(char * cmd)
+balance_command(char * args)
 {
-  size_t len;
-  char response_buffer[MAX_COMMAND_LENGTH];
-  if (authenticated(&session_data)) {
-    len = strnlen(cmd, MAX_COMMAND_LENGTH);
-    send(session_data.sock, cmd, len, 0);
-    recv(session_data.sock, response_buffer, MAX_COMMAND_LENGTH, 0);
-    response_buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-    printf("%s\n", response_buffer);
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", args);
   }
-  memset(response_buffer, 0, MAX_COMMAND_LENGTH);
-  return BANKING_SUCCESS;
-}
+  #endif
 
-int
-withdraw_command(char * cmd)
-{
-  size_t len;
-  char response_buffer[MAX_COMMAND_LENGTH];
   if (authenticated(&session_data)) {
-    len = strnlen(cmd, MAX_COMMAND_LENGTH);
-    send(session_data.sock, cmd, len, 0);
-    recv(session_data.sock, response_buffer, MAX_COMMAND_LENGTH, 0);
-    response_buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-    printf("%s\n", response_buffer);
-  }
-  memset(response_buffer, 0, MAX_COMMAND_LENGTH);
-  return BANKING_SUCCESS;
-}
-
-int
-logout_command(char * cmd)
-{
-  if (authenticated(&session_data)) {
-    printf("You did not 'login' first.\n");
+    salt_and_pepper("balance", NULL, session_data.pbuffer);
+    gather_information(&session_data);
+    session_data.tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
+    printf("%s's balance is: %s\n", session_data.user, session_data.tbuffer);
+    clear_buffers(&session_data);
   } else {
-    revoke_key(session_data.key);
-    /* TODO proper deauthorization */
-    send(session_data.sock, "logout", 7, 0);
-    assert(*cmd == '\0');
+    printf("You must 'login' first.\n");
   }
-  /* Ensure we are not authenticated */
+  return BANKING_SUCCESS;
+}
+
+int
+withdraw_command(char * args)
+{
+  if (authenticated(&session_data)) {
+    printf("You must 'login' first.\n");
+  } else {
+    printf("Ignoring command 'withdraw %s' (not implemented)\n", args);
+  }
+  return BANKING_SUCCESS;
+}
+
+/*! \brief Client side logout command.
+ */
+int
+logout_command(char * args)
+{
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", args);
+  }
+  #endif
+
+  if (authenticated(&session_data)) {
+    printf("You must 'login' first.\n");
+  } else {
+    salt_and_pepper("logout", session_data.user, session_data.pbuffer);
+    gather_information(&session_data);
+    revoke_key(session_data.key);
+  }
+ 
+ /* Ensure we are now not authenticated */
   if (!authenticated(&session_data)) {
     fprintf(stderr, "MISAUTHORIZATION DETECTED\n");
-    return BANKING_FAILURE;
   }
+  clear_buffers(&session_data);
+  
   return BANKING_SUCCESS;
 }
 
 int
-transfer_command(char * cmd)
+transfer_command(char * args)
 {
-  size_t len;
-  char response_buffer[MAX_COMMAND_LENGTH];
   if (authenticated(&session_data)) {
-    len = strnlen(cmd, MAX_COMMAND_LENGTH);
-    send(session_data.sock, cmd, len, 0);
-    recv(session_data.sock, response_buffer, MAX_COMMAND_LENGTH, 0);
-    response_buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-    printf("%s\n", response_buffer);
+    printf("You must 'login' first.\n");
+  } else {
+    printf("Ignoring command 'withdraw %s' (not implemented)\n", args);
   }
-  memset(response_buffer, 0, MAX_COMMAND_LENGTH);
   return BANKING_SUCCESS;
 }
 
