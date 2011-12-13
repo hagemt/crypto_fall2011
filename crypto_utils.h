@@ -85,6 +85,7 @@ revoke_key(unsigned char * key)
       } else if (current->issued < current->expires) {
         /* If so, force it to expire */
         current->expires = current->issued;
+        gcry_create_nonce(current->key, AUTH_KEY_LENGTH);
         gcry_free(current->key);
         current->key = NULL;
         return BANKING_SUCCESS;
