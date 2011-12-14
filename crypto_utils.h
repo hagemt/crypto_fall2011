@@ -203,7 +203,9 @@ checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
 {
   int status;
   size_t len;
-  unsigned char * temporary = NULL;
+  unsigned char * temporary;
+
+  temporary = NULL;
   status = BANKING_SUCCESS;
   len = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
 
@@ -224,12 +226,13 @@ checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
 
   /* If a digest value was given, check it */
   if (digest) {
-    status = strncmp((char *)buffer, (char *)digest, len);
+    status = strncmp((char *)*buffer, (char *)digest, len);
     #ifndef NDEBUG
-    fprintf(stderr, "INFO[%i]: sha256sum('%s')", status, cmd);
+    fprintf(stderr, "INFO: sha256sum('%s')", cmd);
     fprintx(stderr, " ?", digest, len);
     if (status) {
-      fprintx(stderr, "ERROR: hash above does not match", *buffer, len);
+      fprintf(stderr, "ERROR: hash mismatch (%i) ", status);
+      fprintx(stderr, "HASH =", *buffer, len);
     }
   } else {
     fprintf(stderr, "INFO: sha256sum('%s')", cmd);
@@ -255,7 +258,7 @@ print_keystore(FILE * fp)
     (long)(keystore.expires - keystore.issued),
     ctime(&keystore.issued));
 
-  current = &keystore;
+  current = keystore.next;
   while (current) {
     if (current->key) {
       fprintx(fp, "\tENTRY", current->key, AUTH_KEY_LENGTH);
@@ -314,7 +317,11 @@ test_cryptosystem()
   }
   if (checksum(m, s, NULL)) {
     fprintf(stderr, "ERROR: cannot verify message checksum\n");
+  } else {
+    fprintf(stderr, "INFO: checksum verified\n");
   }
+
+  free(s);
 
   free(m);
   free(c);

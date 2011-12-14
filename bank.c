@@ -188,6 +188,7 @@ handle_client(void * arg)
   socklen_t addr_len;
   pthread_t * tid;
 
+  addr_len = sizeof(remote_addr);
   /* Worker threads should terminate on SIGTERM */
   signal(SIGTERM, retire);
 
