@@ -254,6 +254,7 @@ main(int argc, char ** argv)
     }
   }
   signal(SIGINT, handle_signal);
+  signal(SIGTERM, handle_signal);
 
   /* Issue an interactive prompt, only quit on signal */
   while (!session_data.caught_signal && (in = readline(SHELL_PROMPT))) {
