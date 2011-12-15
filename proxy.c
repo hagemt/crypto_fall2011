@@ -17,45 +17,110 @@
  */
 
 /* Standard includes */
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 /* Local includes */
 #include "socket_utils.h"
 
+struct proxy_session_data {
+  int csock, ssock, conn;
+  unsigned char buffer[MAX_COMMAND_LENGTH];
+} session_data;
+
+void
+handle_signal(int sig)
+{
+  #ifndef NDEBUG
+  fprintf(stderr, "INFO: stopping proxy service [signal %i]\n", sig);
+  #endif
+
+  /* TODO flush buffers? */
+  if (session_data.conn >= 0) {
+    destroy_socket(session_data.conn);
+  }
+  if (session_data.ssock >= 0) {
+    destroy_socket(session_data.ssock);
+  }
+  if (session_data.csock >= 0) {
+    destroy_socket(session_data.csock);
+  }
+
+  if (sig == SIGINT) {
+    signal(SIGINT, SIG_DFL);
+    kill(getpid(), SIGINT);
+  }
+}
+
+inline int
+handle_connection(int sock, int * conn)
+{
+  struct sockaddr_in addr_info;
+  socklen_t addr_len = sizeof(addr_info);
+
+  assert(sock >= 0 && conn);
+
+  if ((*conn = accept(sock, (struct sockaddr *)&addr_info, &addr_len)) >= 0) {
+    #ifndef NDEBUG
+    fprintf(stderr, "INFO: tunnel established [%s:%hu]\n",
+      inet_ntoa(addr_info.sin_addr), ntohs(addr_info.sin_port));
+    #endif
+    return BANKING_SUCCESS;
+  }
+  return BANKING_FAILURE;
+}
+
+inline int
+handle_relay(struct proxy_session_data * session, ssize_t * r, ssize_t * s) {
+  assert(session && r && s);
+
+  if ((*r = recv(session->conn,  session->buffer, MAX_COMMAND_LENGTH, 0)) > 0
+   && (*s = send(session->csock, session->buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
+    return BANKING_SUCCESS;
+  }
+  return BANKING_FAILURE;
+}
+
 int
 main(int argc, char ** argv)
 {
-  int ssock, csock, conn;
-  struct sockaddr_in addr_info;
-  socklen_t addr_len;
-  char buffer[MAX_COMMAND_LENGTH];
-  ssize_t s, r; size_t l;
+  ssize_t received, sent;
+
   if (argc != 3) {
     fprintf(stderr, "USAGE: %s listen_port bank_port\n", argv[0]);
-  }
-  if ((ssock = init_server_socket(argv[1])) < 0) {
-    fprintf(stderr, "ERROR: failed to start server\n");
     return EXIT_FAILURE;
   }
-  if ((csock = init_client_socket(argv[2])) < 0) {
-    fprintf(stderr, "ERROR: failed to connect to server\n");
+  signal(SIGINT, &handle_signal);
+  signal(SIGTERM, &handle_signal);
+
+  if ((session_data.csock = init_client_socket(argv[2])) < 0) {
+    fprintf(stderr, "ERROR: unable to connect to server\n");
     return EXIT_FAILURE;
   }
-  while (1) {
-    conn = accept(ssock, (struct sockaddr *)(&addr_info), &addr_len);
-    r = recv(conn, buffer, MAX_COMMAND_LENGTH, 0);
-    l = strnlen(buffer, MAX_COMMAND_LENGTH - 1) + 1;
-    s = send(csock, buffer, l, 0);
-    if (r != s) {
-      fprintf(stderr, "%i bytes lost!\n", (int)(r - s));
-    } else {
-      buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-      printf("FW: '%s'\n", buffer);
+
+  if ((session_data.ssock = init_server_socket(argv[1])) < 0) {
+    fprintf(stderr, "ERROR: unable to start server\n");
+    destroy_socket(session_data.csock);
+    return EXIT_FAILURE;
+  }
+
+  while (!handle_connection(session_data.ssock, &session_data.conn)) {
+    while (!handle_relay(&session_data, &received, &sent)) {
+      if (sent != received) {
+        fprintf(stderr, "%li bytes lost!\n", (long)(received - sent));
+      #ifndef NDEBUG
+      } else {
+        session_data.buffer[MAX_COMMAND_LENGTH - 1] = '\0';
+        printf("FW: '%s'\n", session_data.buffer);
+      #endif
+      }
     }
+    destroy_socket(session_data.conn);
   }
-  destroy_socket(csock);
-  destroy_socket(ssock);
+
+  handle_signal(0);
   return EXIT_SUCCESS;
 }
