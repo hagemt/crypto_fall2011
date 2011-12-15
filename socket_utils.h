@@ -58,7 +58,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   if (residue == NULL || *residue != '\0') {
     fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
   }
-  printf("INFO: will attempt to open port %li\n", port_num);
+  printf("INFO: will attempt to use port %li\n", port_num);
   /* TODO look more closely at overflow
    * printf("sizeof(local_addr->sin_port) = %lu\n", sizeof(local_addr->sin_port));
    * printf("sizeof((unsigned short)port_num) = %lu\n", sizeof((unsigned short)port_num));
