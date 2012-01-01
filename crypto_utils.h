@@ -44,17 +44,18 @@ key_list_t {
 int
 request_key(unsigned char ** key)
 {
-  struct key_list_t * current;
+  struct key_list_t * next;
 
   /* Attempt to produce a new key */
   if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
-    /* Advance to the most recent key */
+    /* TODO Advance to the most recent key
     current = &keystore;
     while (current->next) {
       current = current->next;
     }
+    */
 
-    /* Initialize this key */
+    /* TODO Initialize this key
     if ((current->next = malloc(sizeof(struct key_list_t)))) {
       current = current->next;
       current->expires = time(&current->issued) + AUTH_KEY_TIMEOUT;
@@ -63,6 +64,17 @@ request_key(unsigned char ** key)
 
       return BANKING_SUCCESS;
     }
+    */
+    if ((next = malloc(sizeof(struct key_list_t)))) {
+      next->expires = time(&next->issued) + AUTH_KEY_TIMEOUT;
+      next->key = *key;
+      next->next = keystore.next;
+      keystore.next = next;
+      
+      return BANKING_SUCCESS;
+    }
+
+    /* Otherwise, cleanup before failure */
     gcry_free(*key);
     *key = NULL;
   }
@@ -79,17 +91,19 @@ revoke_key(unsigned char * key)
     /* Check all the keys */
     current = keystore.next;
     while (current) {
-      /* Check if this key matches and is still fresh */
-      if (strncmp((char *)current->key, (char *)key, AUTH_KEY_LENGTH)) {
-        current = current->next;
-      } else if (current->issued < current->expires) {
-        /* If so, force it to expire */
-        current->expires = current->issued;
-        gcry_create_nonce(current->key, AUTH_KEY_LENGTH);
-        gcry_free(current->key);
-        current->key = NULL;
-        return BANKING_SUCCESS;
+      /* Check if this key is fresh and matches */
+      if (current->issued < current->expires) {
+        if (!strncmp((char *)current->key, (char *)key, AUTH_KEY_LENGTH)) {
+          /* If so, force it to expire */
+          current->expires = current->issued;
+          gcry_create_nonce(current->key, AUTH_KEY_LENGTH);
+          gcry_free(current->key);
+          current->key = NULL;
+
+          return BANKING_SUCCESS;
+        }
       }
+      current = current->next;
     }
   }
   return BANKING_FAILURE;
@@ -193,9 +207,39 @@ fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
   size_t i;
   fprintf(fp, "%s: ", label);
   for (i = 0; i < len; ++i) {
+    if (i && i * 2 % MAX_COMMAND_LENGTH == 0) { fprintf(stderr, "\n     "); }
+    /* TODO remove this line ^ it's only temporary */
     fprintf(fp, "%X%X ", (c[i] & 0xF0) >> 4, (c[i] & 0x0F));
   }
   fprintf(fp, "(%u bits)\n", (unsigned)(len * 8));
+}
+
+/*! \brief Obfuscate a message into a buffer, filling the remainder with nonce
+ *  
+ *  \param msg     A raw message, which will be trimmed to MAX_COMMAND_LENGTH
+ *  \param salt    Either NULL or data to XOR with the message
+ *  \param buffer  A buffer of size MAX_COMMAND_LENGTH (mandatory)
+ */
+inline void
+salt_and_pepper(char * msg, const char * salt, char * buffer) {
+  size_t i, mlen, slen;
+
+  /* Buffer the first MAX_COMMAND_LENGTH bytes of the message */
+  mlen = strnlen(msg, MAX_COMMAND_LENGTH);
+  strncpy(buffer, msg, mlen);
+
+  /* Salt the message with cyclic copies of the 
+   * (ex. salt = "SALT", msg = "MESSAGE", buffer = "MESSAGE" ^ "SALTSAL")
+   */
+  if (salt) {
+    slen = strnlen(salt, MAX_COMMAND_LENGTH);
+    for (i = 0; i < mlen; ++i) {
+      buffer[i] ^= salt[i % slen];
+    }
+  }
+
+  /* Make sure the message is peppered with nonce */
+  gcry_create_nonce(buffer + mlen, MAX_COMMAND_LENGTH - mlen);
 }
 
 int
@@ -282,19 +326,21 @@ test_cryptosystem()
   m = calloc(MAX_COMMAND_LENGTH, sizeof(char));
   c = calloc(MAX_COMMAND_LENGTH, sizeof(char));
   p = calloc(MAX_COMMAND_LENGTH, sizeof(char));
-
   strncpy(m, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
 
+  /* key request test */
+  fprintf(stderr, "INTIAL STATE:\n");
   print_keystore(stderr);
   if (request_key(&k)) {
     fprintf(stderr, "ERROR: cannot obtain key\n");
     return BANKING_FAILURE;
   }
+  fprintf(stderr, "AFTER REQUEST:\n");
   print_keystore(stderr);
 
+  /* encryption test */
   encrypt_command(m, k, c);
   decrypt_command(c, k, p);
-
   fprintf(stderr, "MSG: '%s'\n", m);
   fprintx(stderr, "RAW", (unsigned char *)m, MAX_COMMAND_LENGTH);
   fprintx(stderr, "KEY", k, AUTH_KEY_LENGTH);
@@ -305,12 +351,16 @@ test_cryptosystem()
   }
   fprintf(stderr, "\n");
 
+  /* key revocation test */
+  fprintf(stderr, "AFTER ENCRYPTION:\n");
   print_keystore(stderr);
   if (revoke_key(k)) {
-    fprintf(stderr, "WARNING: cannot release key\n");
+    fprintf(stderr, "WARNING: cannot revoke key\n");
   }
+  fprintf(stderr, "AFTER REVOCATION:\n");
   print_keystore(stderr);
 
+  /* checksum test */
   s = NULL;
   if (checksum(m, NULL, &s)) {
     fprintf(stderr, "ERROR: cannot checksum message\n");
@@ -320,7 +370,6 @@ test_cryptosystem()
   } else {
     fprintf(stderr, "INFO: checksum verified\n");
   }
-
   free(s);
 
   free(m);
@@ -330,4 +379,4 @@ test_cryptosystem()
   return BANKING_SUCCESS;
 }
 
-#endif
+#endif /* CRYPTO_UTILS_H */
