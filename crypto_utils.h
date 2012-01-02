@@ -44,39 +44,21 @@ key_list_t {
 int
 request_key(unsigned char ** key)
 {
-  struct key_list_t * next;
+  struct key_list_t * entry;
 
-  /* Attempt to produce a new key */
-  if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
-    /* TODO Advance to the most recent key
-    current = &keystore;
-    while (current->next) {
-      current = current->next;
-    }
-    */
-
-    /* TODO Initialize this key
-    if ((current->next = malloc(sizeof(struct key_list_t)))) {
-      current = current->next;
-      current->expires = time(&current->issued) + AUTH_KEY_TIMEOUT;
-      current->key = *key;
-      current->next = NULL;
-
+  /* Attempt to produce a new key entry */
+  if ((entry = malloc(sizeof(struct key_list_t)))) {
+    /* Generate the actual key */
+    if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
+      entry->expires = time(&entry->issued) + AUTH_KEY_TIMEOUT;
+      entry->key = *key;
+      /* Finally, add the completed key entry */
+      entry->next = keystore.next;
+      keystore.next = entry;
       return BANKING_SUCCESS;
     }
-    */
-    if ((next = malloc(sizeof(struct key_list_t)))) {
-      next->expires = time(&next->issued) + AUTH_KEY_TIMEOUT;
-      next->key = *key;
-      next->next = keystore.next;
-      keystore.next = next;
-      
-      return BANKING_SUCCESS;
-    }
-
-    /* Otherwise, cleanup before failure */
-    gcry_free(*key);
-    *key = NULL;
+    /* Otherwise, forget it */
+    free(entry);
   }
   return BANKING_FAILURE;
 }
@@ -84,26 +66,25 @@ request_key(unsigned char ** key)
 int
 revoke_key(unsigned char * key)
 {
-  struct key_list_t * current;
+  struct key_list_t * entry;
 
   /* Check if the keystore is valid */
   if (keystore.issued < keystore.expires) {
-    /* Check all the keys */
-    current = keystore.next;
-    while (current) {
-      /* Check if this key is fresh and matches */
-      if (current->issued < current->expires) {
-        if (!strncmp((char *)current->key, (char *)key, AUTH_KEY_LENGTH)) {
+    entry = keystore.next;
+    while (entry) {
+      /* Check only valid keys */
+      if (entry->issued < entry->expires) {
+        /* Check if the key matches */
+        if (!strncmp((char *)entry->key, (char *)key, AUTH_KEY_LENGTH)) {
           /* If so, force it to expire */
-          current->expires = current->issued;
-          gcry_create_nonce(current->key, AUTH_KEY_LENGTH);
-          gcry_free(current->key);
-          current->key = NULL;
-
+          entry->expires = entry->issued;
+          gcry_create_nonce(entry->key, AUTH_KEY_LENGTH);
+          gcry_free(entry->key);
+          entry->key = NULL;
           return BANKING_SUCCESS;
         }
       }
-      current = current->next;
+      entry = entry->next;
     }
   }
   return BANKING_FAILURE;

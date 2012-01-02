@@ -52,7 +52,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   char * residue;
   long int port_num;
 
-  /* Acertain address information (including port number) */
+  /* Ascertain address information (including port number) */
   port_num = strtol(port, &residue, 10);
   #ifndef NDEBUG
   if (residue == NULL || *residue != '\0') {
@@ -71,7 +71,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   }
   local_addr->sin_family = AF_INET;
   local_addr->sin_addr.s_addr = inet_addr(BANKING_ADDRESS);
-  local_addr->sin_port = htons((unsigned short)port_num);
+  local_addr->sin_port = htons((unsigned short)(port_num));
 
   /* Perform actual opening of the socket */
   /* TODO a good non-zero value for protocol? */
