@@ -62,26 +62,26 @@ struct command_info_t {
   size_t length;
 };
 
-#define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) }
+#define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) },
 
 const struct command_info_t commands[] = {
   #ifdef USE_LOGIN
-  INIT_COMMAND(login),
+  INIT_COMMAND(login)
   #endif
   #ifdef USE_BALANCE
-  INIT_COMMAND(balance),
+  INIT_COMMAND(balance)
   #endif
   #ifdef USE_WITHDRAW
-  INIT_COMMAND(withdraw),
+  INIT_COMMAND(withdraw)
   #endif
   #ifdef USE_LOGOUT
-  INIT_COMMAND(logout),
+  INIT_COMMAND(logout)
   #endif
   #ifdef USE_TRANSFER
-  INIT_COMMAND(transfer),
+  INIT_COMMAND(transfer)
   #endif
   #ifdef USE_DEPOSIT
-  INIT_COMMAND(deposit),
+  INIT_COMMAND(deposit)
   #endif
   { "quit", NULL, sizeof("quit") }
 };
@@ -93,7 +93,6 @@ validate(char * cmd, command * fun, char ** args)
   size_t i, len;
 
   len = strnlen(cmd, MAX_COMMAND_LENGTH);
-
   /* Advance cmd to the first non-space character */
   for (i = 0; *cmd == ' ' && i < len; ++i, ++cmd);
   /* Locate the first blank space after the command */
