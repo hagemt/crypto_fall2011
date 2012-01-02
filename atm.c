@@ -25,6 +25,10 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+/* UNIX includes */
+#include <termios.h>
+#include <unistd.h>
+
 /* Local includes */
 #define USE_LOGIN
 #define USE_BALANCE
@@ -33,39 +37,8 @@
 #define USE_TRANSFER
 #include "banking_commands.h"
 #include "banking_constants.h"
-
 #include "crypto_utils.h"
 #include "socket_utils.h"
-
-/* UTILITIES *****************************************************************/
-
-/*! \brief Obfuscate a message into a buffer, filling the remainder with nonce
- *  
- *  \param msg     A raw message, which will be trimmed to MAX_COMMAND_LENGTH
- *  \param salt    Either NULL or data to XOR with the message
- *  \param buffer  A buffer of size MAX_COMMAND_LENGTH (mandatory)
- */
-inline void
-salt_and_pepper(char * msg, const char * salt, char * buffer) {
-  size_t i, mlen, slen;
-
-  /* Buffer the first MAX_COMMAND_LENGTH bytes of the message */
-  mlen = strnlen(msg, MAX_COMMAND_LENGTH);
-  strncpy(buffer, msg, mlen);
-
-  /* Salt the message with cyclic copies of the 
-   * (ex. salt = "SALT", msg = "MESSAGE", buffer = "MESSAGE" ^ "SALTSAL")
-   */
-  if (salt) {
-    slen = strnlen(salt, MAX_COMMAND_LENGTH);
-    for (i = 0; i < mlen; ++i) {
-      buffer[i] ^= salt[i % slen];
-    }
-  }
-
-  /* Make sure the message is peppered with nonce */
-  gcry_create_nonce(buffer + mlen, MAX_COMMAND_LENGTH - mlen);
-}
 
 /* SESSION DATA **************************************************************/
 
@@ -76,10 +49,12 @@ struct client_session_data_t {
   char pbuffer[MAX_COMMAND_LENGTH];
   unsigned char cbuffer[MAX_COMMAND_LENGTH];
   char tbuffer[MAX_COMMAND_LENGTH];
+  struct termios terminal_state;
 } session_data;
 
 inline void
-gather_information(struct client_session_data_t * session_data) {
+gather_information(struct client_session_data_t * session_data)
+{
     encrypt_command(session_data->pbuffer, session_data->key, session_data->cbuffer);
     send(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
     recv(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
@@ -87,8 +62,10 @@ gather_information(struct client_session_data_t * session_data) {
 }
 
 inline void
-clear_buffers(struct client_session_data_t * session_data) {
+clear_buffers(struct client_session_data_t * session_data)
+{
   if (session_data) {
+    /* TODO noncify instead? */
     memset(session_data->pbuffer, 0, MAX_COMMAND_LENGTH);
     memset(session_data->cbuffer, 0, MAX_COMMAND_LENGTH);
     memset(session_data->tbuffer, 0, MAX_COMMAND_LENGTH);
@@ -98,8 +75,7 @@ clear_buffers(struct client_session_data_t * session_data) {
 int
 authenticated(struct client_session_data_t * session_data)
 {
-  int i, status;
-  status = BANKING_FAILURE;
+  int i, status = BANKING_FAILURE;
   if (session_data && session_data->key) {
     salt_and_pepper(AUTH_CHECK_MSG, session_data->user, session_data->pbuffer);
     gather_information(session_data);
@@ -116,8 +92,41 @@ authenticated(struct client_session_data_t * session_data)
   return status;
 }
 
-/* Commands ******************************************************************/
+int
+acquire_credentials(struct client_session_data_t * session_data, char ** pin)
+{
+  if (tcgetattr(0, &session_data->terminal_state)) {
+    #ifndef NDEBUG
+    fprintf(stderr, "ERROR: unable to determine terminal attributes\n");
+    #endif
+    return BANKING_FAILURE;
+  }
 
+  session_data->terminal_state.c_lflag &= ~ECHO;
+  if (tcsetattr(0, TCSANOW, &session_data->terminal_state)) {
+    #ifndef NDEBUG
+    fprintf(stderr, "ERROR: unable to disable terminal echo\n");
+    #endif
+    return BANKING_FAILURE;
+  }
+
+  *pin = readline(PIN_PROMPT);
+  putchar('\n');
+
+  /* TODO signal handler for ensuring ECHO is re-enabled? */
+  session_data->terminal_state.c_lflag |= ECHO;
+  if (tcsetattr(0, TCSANOW, &session_data->terminal_state)) {
+    #ifndef NDEBUG
+    fprintf(stderr, "ERROR: unable to re-enable terminal echo\n");
+    #endif
+  }
+  
+  return (*pin) ? BANKING_SUCCESS : BANKING_FAILURE;
+}
+
+/* COMMANDS ******************************************************************/
+
+#ifdef USE_LOGIN
 int
 login_command(char * args)
 {
@@ -141,9 +150,11 @@ login_command(char * args)
     request_key(&session_data.key);
     salt_and_pepper("login", session_data.user, session_data.pbuffer);
     gather_information(&session_data);
-    if ((pin = readline(PIN_PROMPT))) {
+    if (acquire_credentials(&session_data, &pin) == BANKING_SUCCESS) {
       salt_and_pepper(pin, session_data.user, session_data.pbuffer);
       gather_information(&session_data);
+      /* TODO noncify instead? safe? */
+      memset(pin, 0, strlen(pin));
       free(pin);
     }
     if (authenticated(&session_data)) {
@@ -156,9 +167,10 @@ login_command(char * args)
   }
   return BANKING_SUCCESS;
 }
+#endif /* USE_LOGIN */
 
-/*! \brief Client side balance command.
- */
+#ifdef USE_BALANCE
+/*! \brief Client side balance command. */
 int
 balance_command(char * args)
 {
@@ -179,7 +191,9 @@ balance_command(char * args)
   }
   return BANKING_SUCCESS;
 }
+#endif /* USE_BALANCE */
 
+#ifdef USE_WITHDRAW
 int
 withdraw_command(char * args)
 {
@@ -190,9 +204,10 @@ withdraw_command(char * args)
   }
   return BANKING_SUCCESS;
 }
+#endif /* USE_WITHDRAW */
 
-/*! \brief Client side logout command.
- */
+#ifdef USE_LOGOUT
+/*! \brief Client side logout command. */
 int
 logout_command(char * args)
 {
@@ -218,7 +233,9 @@ logout_command(char * args)
   
   return BANKING_SUCCESS;
 }
+#endif /* USE_LOGOUT */
 
+#ifdef USE_TRANSFER
 int
 transfer_command(char * args)
 {
@@ -229,6 +246,9 @@ transfer_command(char * args)
   }
   return BANKING_SUCCESS;
 }
+#endif /* USE_TRANSFER */
+
+/* DRIVER ********************************************************************/
 
 int
 main(int argc, char ** argv)
@@ -247,7 +267,7 @@ main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
   if ((session_data.sock = init_client_socket(argv[1])) < 0) {
-    fprintf(stderr, "FATAL: proxy unreachable\n");
+    fprintf(stderr, "FATAL: bank unreachable\n");
     return EXIT_FAILURE;
   }
 
@@ -275,7 +295,7 @@ main(int argc, char ** argv)
   test_cryptosystem();
   #endif
   shutdown_crypto();
-  printf("\n");
+  putchar('\n');
   return EXIT_SUCCESS;
 }
 
