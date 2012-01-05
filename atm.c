@@ -53,8 +53,7 @@ struct client_session_data_t {
 } session_data;
 
 inline void
-gather_information(struct client_session_data_t * session_data)
-{
+gather_information(struct client_session_data_t * session_data) {
     encrypt_command(session_data->pbuffer, session_data->key, session_data->cbuffer);
     send(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
     recv(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
@@ -62,13 +61,12 @@ gather_information(struct client_session_data_t * session_data)
 }
 
 inline void
-clear_buffers(struct client_session_data_t * session_data)
-{
+clear_buffers(struct client_session_data_t * session_data) {
   if (session_data) {
     /* TODO noncify instead? */
-    memset(session_data->pbuffer, 0, MAX_COMMAND_LENGTH);
-    memset(session_data->cbuffer, 0, MAX_COMMAND_LENGTH);
-    memset(session_data->tbuffer, 0, MAX_COMMAND_LENGTH);
+    memset(session_data->pbuffer, '\0', MAX_COMMAND_LENGTH);
+    memset(session_data->cbuffer, '\0', MAX_COMMAND_LENGTH);
+    memset(session_data->tbuffer, '\0', MAX_COMMAND_LENGTH);
   }
 }
 
@@ -154,7 +152,7 @@ login_command(char * args)
       salt_and_pepper(pin, session_data.user, session_data.pbuffer);
       gather_information(&session_data);
       /* TODO noncify instead? safe? */
-      memset(pin, 0, strlen(pin));
+      memset(pin, '\0', strlen(pin));
       free(pin);
     }
     if (authenticated(&session_data)) {
@@ -253,9 +251,9 @@ transfer_command(char * args)
 int
 main(int argc, char ** argv)
 {
-  char * in, * args;
+  char * in, * args, buffer[MAX_COMMAND_LENGTH];
   command cmd;
-  int caught_signal;
+  int i, caught_signal = 0;
 
   /* Input sanitation and initialization */
   if (argc != 2) {
@@ -272,28 +270,28 @@ main(int argc, char ** argv)
   }
 
   /* Issue an interactive prompt, terminate only on failure */
-  for (caught_signal = 0; !caught_signal && (in = readline(SHELL_PROMPT));) {
-    /* Read in a line, then attempt to associate it with a command */
-    if (validate(in, &cmd, &args)) {
-      /* Ignore empty commands */
-      if (*in != '\0') {
+  while (!caught_signal && (in = readline(SHELL_PROMPT))) {
+    /* Ignore empty commands */
+    if (*in != '\0') {
+      /* Add the original command to the shell history */
+      memset(buffer, '\0', MAX_COMMAND_LENGTH);
+      strncpy(buffer, in, MAX_COMMAND_LENGTH);
+      buffer[MAX_COMMAND_LENGTH - 1] = '\0';
+      for (i = 0; buffer[i] == ' '; ++i);
+      add_history(buffer + i);
+      /* Read in a line, then attempt to associate it with a command */
+      if (validate_command(in, &cmd, &args)) {
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
+      } else {
+        /* Set up to signal based on the command's invocation */
+        caught_signal = ((cmd == NULL) || cmd(args));
       }
-    } else {
-      /* Add the command to the shell history */
-      add_history(in);
-      /* Set up to signal based on the command's invocation */
-      caught_signal = ((cmd == NULL) || cmd(args));
     }
-    /* Cleanup from here down */
     free(in);
     in = NULL;
   }
 
   destroy_socket(session_data.sock);
-  #ifndef NDEBUG
-  test_cryptosystem();
-  #endif
   shutdown_crypto();
   putchar('\n');
   return EXIT_SUCCESS;

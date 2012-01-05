@@ -24,6 +24,11 @@
 
 #include "banking_constants.h"
 
+#define INIT_COMMAND(CMD_NAME) \
+  { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) },
+
+/* COMMANDS *******************************************************************/
+
 #ifdef USE_LOGIN
 int
 login_command(char *);
@@ -62,8 +67,6 @@ struct command_info_t {
   size_t length;
 };
 
-#define INIT_COMMAND(CMD_NAME) { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) },
-
 const struct command_info_t commands[] = {
   #ifdef USE_LOGIN
   INIT_COMMAND(login)
@@ -87,7 +90,7 @@ const struct command_info_t commands[] = {
 };
 
 int
-validate(char * cmd, command * fun, char ** args)
+validate_command(char * cmd, command * fun, char ** args)
 {
   int invalid;
   size_t i, len;
@@ -115,4 +118,65 @@ validate(char * cmd, command * fun, char ** args)
   return invalid && strncmp(commands[i].name, cmd, commands[i].length);
 }
 
+/* HANDLES *******************************************************************/
+
+#ifdef HANDLE_LOGIN
+int
+handle_login_command(char *);
 #endif
+
+#ifdef HANDLE_BALANCE
+int
+handle_balance_command(char *);
+#endif
+
+#ifdef HANDLE_WITHDRAW
+int
+handle_withdraw_command(char *);
+#endif
+
+#ifdef HANDLE_LOGOUT
+int
+handle_logout_command(char *);
+#endif
+
+#ifdef HANDLE_TRANSFER
+int
+handle_transfer_command(char *);
+#endif
+
+#ifdef HANDLE_DEPOSIT
+int
+handle_deposit_command(char *);
+#endif
+
+const struct command_info_t handles[] = {
+  #ifdef HANDLE_LOGIN
+  INIT_COMMAND(handle_login)
+  #endif
+  #ifdef HANDLE_BALANCE
+  INIT_COMMAND(handle_balance)
+  #endif
+  #ifdef HANDLE_WITHDRAW
+  INIT_COMMAND(handle_withdraw)
+  #endif
+  #ifdef HANDLE_LOGOUT
+  INIT_COMMAND(handle_logout)
+  #endif
+  #ifdef HANDLE_TRANSFER
+  INIT_COMMAND(handle_transfer)
+  #endif
+  #ifdef HANDLE_DEPOSIT
+  INIT_COMMAND(handle_deposit)
+  #endif
+  { "handle_ping", NULL, sizeof("handle_ping") }
+};
+
+int
+run_handle(char * cmd)
+{
+  fprintf(stderr, "RUN_HANDLE: '%s'\n", cmd);
+  return BANKING_SUCCESS;
+}
+
+#endif /* BANKING_COMMANDS_H */

@@ -32,10 +32,10 @@ struct proxy_session_data_t {
 } session_data;
 
 void
-handle_signal(int sig)
+handle_signal(int signum)
 {
   #ifndef NDEBUG
-  fprintf(stderr, "INFO: stopping proxy service [signal %i]\n", sig);
+  fprintf(stderr, "INFO: stopping proxy service [signal %i]\n", signum);
   #endif
 
   if (session_data.conn >= 0) {
@@ -49,24 +49,26 @@ handle_signal(int sig)
   }
 
   /* TODO needs to flush buffer? */
-  memset(session_data.buffer, 0, MAX_COMMAND_LENGTH);
+  memset(session_data.buffer, '\0', MAX_COMMAND_LENGTH);
 
-  if (sig == SIGINT) {
+  if (signum == SIGINT) {
     signal(SIGINT, SIG_DFL);
-    kill(getpid(), SIGINT);
+    raise(SIGINT);
   }
 }
 
 inline int
 handle_connection(int sock, int * conn)
 {
-  struct sockaddr_in addr_info;
-  socklen_t addr_len = sizeof(addr_info);
+  char buffer[INET_ADDRSTRLEN];
+  struct sockaddr_in remote_addr;
+  socklen_t addr_len = sizeof(remote_addr);
   assert(sock >= 0 && conn);
-  if ((*conn = accept(sock, (struct sockaddr *)&addr_info, &addr_len)) >= 0) {
+  if ((*conn = accept(sock, (struct sockaddr *)(&remote_addr), &addr_len)) >= 0) {
     #ifndef NDEBUG
     fprintf(stderr, "INFO: tunnel established [%s:%hu]\n",
-      inet_ntoa(addr_info.sin_addr), ntohs(addr_info.sin_port));
+      inet_ntop(AF_INET, &remote_addr.sin_addr, buffer, INET_ADDRSTRLEN),
+      ntohs(remote_addr.sin_port));
     #endif
     return BANKING_SUCCESS;
   }
@@ -76,7 +78,7 @@ handle_connection(int sock, int * conn)
 inline int
 handle_relay(struct proxy_session_data_t * session, ssize_t * r, ssize_t * s) {
   assert(session && session->buffer && r && s);
-  memset(session->buffer, 0, MAX_COMMAND_LENGTH);
+  memset(session->buffer, '\0', MAX_COMMAND_LENGTH);
   if ((*r = recv(session->conn,  session->buffer, MAX_COMMAND_LENGTH, 0)) > 0
    && (*s = send(session->csock, session->buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
     return BANKING_SUCCESS;
@@ -93,8 +95,13 @@ main(int argc, char ** argv)
     fprintf(stderr, "USAGE: %s listen_port bank_port\n", argv[0]);
     return EXIT_FAILURE;
   }
-  signal(SIGINT, &handle_signal);
-  signal(SIGTERM, &handle_signal);
+  /* Capture SIGINT and SIGTERM, TODO sigaction? */
+  if (signal(SIGINT, &handle_signal) == SIG_IGN) {
+    signal(SIGINT, SIG_IGN);
+  }
+  if (signal(SIGTERM, &handle_signal) == SIG_IGN) {
+    signal(SIGTERM, SIG_IGN);
+  }
 
   if ((session_data.csock = init_client_socket(argv[2])) < 0) {
     fprintf(stderr, "ERROR: unable to connect to server\n");

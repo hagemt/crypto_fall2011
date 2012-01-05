@@ -31,18 +31,28 @@
 /* Local includes */
 #define USE_BALANCE
 #define USE_DEPOSIT
-#include "banking_constants.h"
+#define HANDLE_LOGIN
+#define HANDLE_BALANCE
+#define HANDLE_WITHDRAW
+#define HANDLE_LOGOUT
+#define HANDLE_TRANSFER
 #include "banking_commands.h"
-#include "socket_utils.h"
+#include "banking_constants.h"
+#include "crypto_utils.h"
 #include "db_utils.h"
+#include "socket_utils.h"
 
 struct server_session_data_t {
   int sock, caught_signal;
   sqlite3 * db_conn;
   pthread_mutex_t accept_mutex;
   pthread_t tids[MAX_CONNECTIONS];
+  struct sigaction signal_action;
 } session_data;
 
+/* PROMPT COMMANDS ***********************************************************/
+
+#ifdef USE_BALANCE
 int
 balance_command(char * args)
 {
@@ -81,7 +91,9 @@ balance_command(char * args)
 
   return BANKING_SUCCESS;
 }
+#endif /* USE_BALANCE */
 
+#ifdef USE_DEPOSIT
 int
 deposit_command(char * args)
 {
@@ -106,7 +118,7 @@ deposit_command(char * args)
   }
   #endif
 
-  /* Ensure the transaction amount is sane */
+  /* Ensure the transaction amount is sane, TODO better solution? */
   if (amount < -MAX_TRANSACTION || amount > MAX_TRANSACTION) {
     fprintf(stderr, "ERROR: amount (%li) exceeds maximum transaction (%i)\n", amount, MAX_TRANSACTION);
     return BANKING_SUCCESS;
@@ -128,14 +140,64 @@ deposit_command(char * args)
 
   return BANKING_SUCCESS;
 }
+#endif /* USE_DEPOSIT */
+
+/* HANDLERS ******************************************************************/
+
+#ifdef HANDLE_LOGIN
+int
+handle_login_command(char * args)
+{
+  fprintf(stderr, "INFO: login handled '%s' (argument residue)\n", args);
+  return BANKING_SUCCESS;
+}
+#endif /* HANDLE_LOGIN */
+
+#ifdef HANDLE_BALANCE
+int
+handle_balance_command(char * args)
+{
+  fprintf(stderr, "INFO: balance handled '%s' (argument residue)\n", args);
+  return BANKING_SUCCESS;
+}
+#endif /* HANDLE_BALANCE */
+
+#ifdef HANDLE_WITHDRAW
+int
+handle_withdraw_command(char * args)
+{
+  fprintf(stderr, "INFO: withdraw handled '%s' (argument residue)\n", args);
+  return BANKING_SUCCESS;
+}
+#endif /* HANDLE_WITHDRAW */
+
+#ifdef HANDLE_LOGOUT
+int
+handle_logout_command(char * args)
+{
+  fprintf(stderr, "INFO: logout handled '%s' (argument residue)\n", args);
+  return BANKING_SUCCESS;
+}
+#endif /* HANDLE_LOGOUT */
+
+#ifdef HANDLE_TRANSFER
+int
+handle_transfer_command(char * args)
+{
+  fprintf(stderr, "INFO: transfer handled '%s' (argument residue)\n", args);
+  return BANKING_SUCCESS;
+}
+#endif /* HANDLE_TRANSFER */
+
+/* DRIVERS *******************************************************************/
 
 void
-handle_signal(int sig)
+handle_signal(int signum)
 {
-  size_t i;
+  int i;
   printf("\n");
   /* Perform a graceful shutdown of the system */
-  session_data.caught_signal = sig;
+  session_data.caught_signal = signum;
 
   /* Send SIGTERM to every worker */
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
@@ -164,33 +226,46 @@ handle_signal(int sig)
   /* Do remaining housekeeping */
   pthread_mutex_destroy(&session_data.accept_mutex);
   destroy_socket(session_data.sock);
+  shutdown_crypto();
   destroy_db(NULL, session_data.db_conn);
-  if (sig == SIGINT) {
+
+  /* TODO better re-raising? */
+  if (signum == SIGINT) {
     signal(SIGINT, SIG_DFL);
-    kill(getpid(), SIGINT);
+    raise(SIGINT);
   }
 }
 
 inline void
-retire(int sig) {
+retire(int signum) {
+  int conn;
   #ifndef NDEBUG
-  fprintf(stderr, "INFO: worker thread retiring [signal %i]\n", sig);
+  fprintf(stderr, "INFO: worker thread retiring [signal %i]\n", signum);
   #endif
+
+  /* TODO do graceful disconnection */
+  conn = BANKING_FAILURE;
+  if (conn >= 0) {
+    destroy_socket(conn);
+  }
+
   pthread_exit(NULL);
 }
 
 void *
 handle_client(void * arg)
 {
-  int conn;
+  int conn, caught_signal;
   char buffer[MAX_COMMAND_LENGTH];
   struct sockaddr_in remote_addr;
   socklen_t addr_len;
   pthread_t * tid;
-
   addr_len = sizeof(remote_addr);
-  /* Worker threads should terminate on SIGTERM */
-  signal(SIGTERM, retire);
+
+  /* Worker threads should terminate on SIGTERM and ignore SIGINT */
+  caught_signal = 0;
+  signal(SIGTERM, &retire);
+  signal(SIGINT, SIG_IGN);
 
   /* Fetch the ID from the argument */
   tid = (pthread_t *)arg;
@@ -199,7 +274,7 @@ handle_client(void * arg)
   #endif
 
   /* As long as possible, grab up whatever connection is available */
-  while (!session_data.caught_signal) {
+  while (!session_data.caught_signal && !caught_signal) {
     pthread_mutex_lock(&session_data.accept_mutex);
     conn = accept(session_data.sock, (struct sockaddr *)(&remote_addr), &addr_len);
     pthread_mutex_unlock(&session_data.accept_mutex);
@@ -211,12 +286,13 @@ handle_client(void * arg)
       fprintf(stderr, "[thread %lu] RECV: '%s'\n", *tid, buffer);
       #endif
       destroy_socket(conn);
+      conn = BANKING_FAILURE;
     } else {
       fprintf(stderr, "[thread %lu] ERROR: worker failed to accept client\n", *tid);
-      /* TODO wait, or break? */
     }
   }
 
+  /* Teardown */
   retire(0);
   return NULL;
 }
@@ -224,28 +300,38 @@ handle_client(void * arg)
 int
 main(int argc, char ** argv)
 {
-  int i;
-  char * in, * args;
+  char * in, * args, buffer[MAX_COMMAND_LENGTH];
   command cmd;
+  int i;
 
-  /* Sanitize input and attempt socket initialization */
+  /* Sanitize input */
   if (argc != 2) {
     fprintf(stderr, "USAGE: %s port\n", argv[0]);
     return EXIT_FAILURE;
   }
+
+  /* Socket initialization */
   if ((session_data.sock = init_server_socket(argv[1])) < 0) {
     fprintf(stderr, "FATAL: server failed to start\n");
+    return EXIT_FAILURE;
+  }
+
+  /* Crypto initialization */
+  if (init_crypto()) {
+    fprintf(stderr, "FATAL: failed to enter secure mode\n");
+    destroy_socket(session_data.sock);
     return EXIT_FAILURE;
   }
 
   /* Database initialization */
   if (init_db(":memory:", &session_data.db_conn)) {
     fprintf(stderr, "FATAL: failed to connect to database\n");
+    destroy_socket(session_data.sock);
+    shutdown_crypto();
     return EXIT_FAILURE;
   }
 
   /* Thread initialization */
-  session_data.caught_signal = 0;
   pthread_mutex_init(&session_data.accept_mutex, NULL);
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     if (pthread_create(&session_data.tids[i], NULL, &handle_client, &session_data.tids[i])) {
@@ -253,28 +339,43 @@ main(int argc, char ** argv)
       fprintf(stderr, "WARNING: failed to start worker thread\n");
     }
   }
-  signal(SIGINT, handle_signal);
-  signal(SIGTERM, handle_signal);
+
+  /* Signaling initialization */
+  session_data.caught_signal = 0;
+  memset(&session_data.signal_action, '\0', sizeof(session_data.signal_action));
+  session_data.signal_action.sa_handler = &handle_signal;
+  /* TODO fewer/more signals? use sigaction? */
+  if (signal(SIGINT, &handle_signal) == SIG_IGN) {
+    signal(SIGINT, SIG_IGN);
+  }
+  if (signal(SIGTERM, &handle_signal) == SIG_IGN) {
+    signal(SIGINT, SIG_IGN);
+  }
 
   /* Issue an interactive prompt, only quit on signal */
   while (!session_data.caught_signal && (in = readline(SHELL_PROMPT))) {
-    /* Catch invalid commands */
-    if (validate(in, &cmd, &args)) {
-      /* Ignore empty strings */
-      if (*in != '\0') {
+    /* Ignore empty strings */
+    if (*in != '\0') {
+      /* Add the original command to the shell history */
+      memset(buffer, '\0', MAX_COMMAND_LENGTH);
+      strncpy(buffer, in, MAX_COMMAND_LENGTH);
+      buffer[MAX_COMMAND_LENGTH - 1] = '\0';
+      for (i = 0; buffer[i] == ' '; ++i);
+      add_history(buffer + i);
+      /* Catch invalid commands prior to invocation */
+      if (validate_command(in, &cmd, &args)) {
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
+      } else {
+        /* Hook the command's return value to this signal */
+        session_data.caught_signal = ((cmd == NULL) || cmd(args));
       }
-    } else {
-      /* Add the command to the shell history */
-      add_history(in);
-      /* Hook the command's return value to this signal */
-      session_data.caught_signal = ((cmd == NULL) || cmd(args));
     }
-    /* Cleanup from here down */
     free(in);
     in = NULL;
   }
 
-  handle_signal(SIGTERM);
+  /* Teardown */
+  handle_signal(0);
   return EXIT_SUCCESS;
 }
+
