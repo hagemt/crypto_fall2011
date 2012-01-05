@@ -255,17 +255,22 @@ main(int argc, char ** argv)
   command cmd;
   int i, caught_signal = 0;
 
-  /* Input sanitation and initialization */
+  /* Input sanitation */
   if (argc != 2) {
     fprintf(stderr, "USAGE: %s port_num\n", argv[0]);
     return EXIT_FAILURE;
   }
-  if (init_crypto()) {
-    fprintf(stderr, "FATAL: invalid security\n");
+
+  /* Crypto initialization */
+  if (init_crypto(old_shmid(&i))) {
+    fprintf(stderr, "FATAL: unable to enter secure mode\n");
     return EXIT_FAILURE;
   }
+
+  /* Socket initialization */
   if ((session_data.sock = init_client_socket(argv[1])) < 0) {
-    fprintf(stderr, "FATAL: bank unreachable\n");
+    fprintf(stderr, "FATAL: unable to connect to server\n");
+    shutdown_crypto(old_shmid(&i));
     return EXIT_FAILURE;
   }
 
@@ -292,7 +297,7 @@ main(int argc, char ** argv)
   }
 
   destroy_socket(session_data.sock);
-  shutdown_crypto();
+  shutdown_crypto(old_shmid(&i));
   putchar('\n');
   return EXIT_SUCCESS;
 }

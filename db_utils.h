@@ -126,7 +126,7 @@ init_db(const char * db_path, sqlite3 ** db_conn)
                                 &statement,
                                 &residue);
     if (status == SQLITE_OK) {
-      fprintf(stderr, "INFO:\tName\tBalance\n");
+      fprintf(stderr, "INFO:\tName\tBalance\t(initial database)\n");
       while (sqlite3_step(statement) == SQLITE_ROW) {
         fprintf(stderr, "\t%s\t%i\n", sqlite3_column_text(statement, 0),
                                       sqlite3_column_int (statement, 1));

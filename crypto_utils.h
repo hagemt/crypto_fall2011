@@ -32,6 +32,36 @@
 
 #include "banking_constants.h"
 
+/* Shared memory includes TODO remove */
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/errno.h>
+inline int * new_shmid(int * shmid) {
+  char * shmem;
+  #ifndef NDEBUG
+  fprintf(stderr, "INFO: using shared memory key: 0x%X\n", BANKING_SHMKEY);
+  #endif
+  *shmid = shmget(BANKING_SHMKEY, sizeof(AUTH_CHECK_MSG), IPC_CREAT | 0666);
+  if (*shmid != -1 && (shmem = shmat(*shmid, NULL, 0))) {
+    snprintf(shmem, sizeof(AUTH_CHECK_MSG), AUTH_CHECK_MSG);
+    #ifndef NDEBUG
+    fprintf(stderr, "INFO: shared memory contents: '%s'\n", shmem);
+    #endif
+  }
+  #ifndef NDEBUG
+  fprintf(stderr, "INFO: new shared memory id: %i\n", *shmid);
+  #endif
+  return shmid;
+}
+inline int * old_shmid(int * shmid) {
+  *shmid = shmget(BANKING_SHMKEY, sizeof(AUTH_CHECK_MSG), 0666);
+  #ifndef NDEBUG
+  fprintf(stderr, "INFO: old shared memory id: %i\n", *shmid);
+  #endif
+  return shmid;
+}
+
 /*** KEYSTORE, ISSUING AND REVOCATION ****************************************/
 
 struct
@@ -76,7 +106,7 @@ revoke_key(unsigned char * key)
       if (entry->issued < entry->expires) {
         /* Check if the key matches */
         if (!strncmp((char *)entry->key, (char *)key, AUTH_KEY_LENGTH)) {
-          /* If so, force it to expire */
+          /* If so, force it to expire and purge */
           entry->expires = entry->issued;
           gcry_create_nonce(entry->key, AUTH_KEY_LENGTH);
           gcry_free(entry->key);
@@ -92,13 +122,27 @@ revoke_key(unsigned char * key)
 
 /*** INITIALIZATION AND TERMINATION ******************************************/
 
+/* \brief TODO remove
+ * If shmsp is NULL, do not use shared memory.
+ * Otherwise, access it. Put the keystore here if one does not already exist.
+ */
 int
-init_crypto()
+init_crypto(const int * const shmid)
 {
   /* Reset the keystore */
   keystore.expires = time(&keystore.issued) + AUTH_KEY_TIMEOUT * AUTH_KEY_TIMEOUT;
-  keystore.key = malloc(AUTH_KEY_LENGTH * sizeof(unsigned char));
-  strncpy((char *)keystore.key, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));;
+  /* TODO remove temporary shared memory business, do actual OTP */
+  keystore.key = (unsigned char *)(-1);
+  if (shmid) {
+    keystore.key = (unsigned char *)(shmat(*shmid, NULL, SHM_RDONLY));
+    #ifndef NDEBUG
+    fprintf(stderr, "INFO: shared memory segment attached at %p\n", keystore.key);
+    #endif
+  }
+  if (keystore.key == (unsigned char *)(-1)) {
+    keystore.key = malloc(AUTH_KEY_LENGTH * sizeof(unsigned char));
+    strncpy((char *)keystore.key, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
+  }
   keystore.next = NULL;
 
   /* Load thread callbacks */
@@ -127,12 +171,20 @@ init_crypto()
 }
 
 void
-shutdown_crypto()
+shutdown_crypto(const int * const shmid)
 {
   /* Destroy the keystore */
   struct key_list_t * current, * next;
   keystore.issued = keystore.expires = 0;
-  free(keystore.key);
+  /* TODO remove temporary shared memory business */
+  if (shmid) {
+    if (shmdt(keystore.key)) {
+      fprintf(stderr, "WARNING: unable to detach shared memory segment\n");
+    }
+  } else {
+    free(keystore.key);
+  }
+
   current = keystore.next;
   while (current) {
     current->expires = current->issued;
@@ -299,7 +351,7 @@ print_keystore(FILE * fp)
 }
 
 int
-test_cryptosystem()
+test_crypto()
 {
   char * m, * p;
   unsigned char * c, * k, * s;
