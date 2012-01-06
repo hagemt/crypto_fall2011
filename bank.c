@@ -42,12 +42,23 @@
 #include "db_utils.h"
 #include "socket_utils.h"
 
+struct thread_data_t {
+  pthread_t id;
+  int sock;
+  char buffer[MAX_COMMAND_LENGTH];
+  struct sigaction * signal_action;
+  volatile int caught_signal;
+  struct sockaddr_storage remote_addr;
+  socklen_t remote_addr_len;
+};
+
 struct server_session_data_t {
-  int sock, caught_signal;
+  int sock;
   sqlite3 * db_conn;
   pthread_mutex_t accept_mutex;
-  pthread_t tids[MAX_CONNECTIONS];
+  struct thread_data_t thread_data[MAX_CONNECTIONS];
   struct sigaction signal_action;
+  volatile int caught_signal;
 } session_data;
 
 /* PROMPT COMMANDS ***********************************************************/
@@ -196,30 +207,30 @@ handle_signal(int signum)
 {
   int i;
   printf("\n");
-  #ifndef NDEBUG
-  fprintf(stderr, "INFO: signal caught [code %i]\n", signum);
-  #endif
+  if (signum) {
+    fprintf(stderr, "WARNING: signal caught [code %i: %s]\n", signum, strsignal(signum));
+  }
   /* Perform a graceful shutdown of the system */
   session_data.caught_signal = signum;
 
   /* Send SIGTERM to every worker */
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    if (session_data.tids[i] != (pthread_t)(BANKING_FAILURE)) {
+    if (session_data.thread_data[i].id != (pthread_t)(BANKING_FAILURE)) {
       #ifndef NDEBUG
-      fprintf(stderr, "INFO: sending signal to worker thread\n");
+      fprintf(stderr, "INFO: sending kill signal to worker thread\n");
       #endif
-      pthread_kill(session_data.tids[i], SIGUSR1);
+      pthread_kill(session_data.thread_data[i].id, SIGUSR1);
     }
   }
 
   /* Now collect them */
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    if (session_data.tids[i] != (pthread_t)(BANKING_FAILURE)) {
-      if (pthread_join(session_data.tids[i], NULL)) {
-        session_data.tids[i] = (pthread_t)(BANKING_FAILURE);
+    if (session_data.thread_data[i].id != (pthread_t)(BANKING_FAILURE)) {
+      if (pthread_join(session_data.thread_data[i].id, NULL)) {
+        session_data.thread_data[i].id = (pthread_t)(BANKING_FAILURE);
         fprintf(stderr, "ERROR: failed to collect worker thread\n");
       } else {
-        session_data.tids[i] = (pthread_t)(BANKING_SUCCESS);
+        session_data.thread_data[i].id = (pthread_t)(BANKING_SUCCESS);
         #ifndef NDEBUG
         fprintf(stderr, "INFO: collected worker thread\n");
         #endif
@@ -247,66 +258,54 @@ handle_signal(int signum)
   }
 }
 
-inline void
-retire(int signum) {
-  int conn;
-  #ifndef NDEBUG
-  fprintf(stderr, "INFO: worker thread retiring [code %i]\n", signum);
-  #endif
-
-  /* TODO do graceful disconnection */
-  conn = BANKING_FAILURE;
-  if (conn >= 0) {
-    destroy_socket(conn);
+void
+handle_interruption(int signum)
+{
+  if (signum == SIGUSR1) {
+    #ifndef NDEBUG
+    fprintf(stderr, "INFO: worker thread retiring\n");
+    #endif
+    pthread_exit(NULL);
+  } else {
+    fprintf(stderr, "WARNING: signal caught [code %i: %s]\n", signum, strsignal(signum));
   }
-
-  pthread_exit(NULL);
 }
 
 void *
 handle_client(void * arg)
 {
-  pthread_t thread_id;
-  int sock, caught_signal;
-  char buffer[MAX_COMMAND_LENGTH];
-  struct sigaction signal_action;
-  struct sockaddr_in remote_addr;
-  socklen_t addr_len = sizeof(remote_addr);
-
-  /* Worker thread signal handling is unique */
-  caught_signal = 0;
-  memset(&signal_action, '\0', sizeof(signal_action));
-  sigfillset(&signal_action.sa_mask);
-  signal_action.sa_handler = &retire;
-  sigaction(SIGUSR1, &signal_action, NULL);
-
+  struct thread_data_t * datum = (struct thread_data_t *)(arg);
   /* Fetch the ID from the argument */
-  thread_id = *((pthread_t *)(arg));
   #ifndef NDEBUG
-  fprintf(stderr, "[thread %lu] INFO: worker started\n", thread_id);
+  fprintf(stderr, "[thread %lu] INFO: worker started\n", datum->id);
   #endif
 
+  /* Worker thread signal handling is unique */
+  sigaction(SIGUSR1, datum->signal_action, NULL);
+  sigaction(SIGUSR2, datum->signal_action, NULL);
+
   /* As long as possible, grab up whatever connection is available */
-  while (!session_data.caught_signal && !caught_signal) {
+  while (!session_data.caught_signal && !datum->caught_signal) {
     pthread_mutex_lock(&session_data.accept_mutex);
-    sock = accept(session_data.sock, (struct sockaddr *)(&remote_addr), &addr_len);
+    datum->sock = accept(session_data.sock, (struct sockaddr *)(&datum->remote_addr), &datum->remote_addr_len);
     pthread_mutex_unlock(&session_data.accept_mutex);
-    if (sock >= 0) {
+    if (datum->sock >= 0) {
       #ifndef NDEBUG
-      fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", thread_id);
-      recv(sock, buffer, MAX_COMMAND_LENGTH, 0);
-      buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-      fprintf(stderr, "[thread %lu] RECV: '%s'\n", thread_id, buffer);
+      fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
+      memset(datum->buffer, '\0', MAX_COMMAND_LENGTH);
+      recv(datum->sock, datum->buffer, MAX_COMMAND_LENGTH, 0);
+      datum->buffer[MAX_COMMAND_LENGTH - 1] = '\0';
+      fprintf(stderr, "[thread %lu] RECV: '%s'\n", datum->id, datum->buffer);
       #endif
-      destroy_socket(sock);
-      sock = BANKING_FAILURE;
+      destroy_socket(datum->sock);
+      datum->sock = BANKING_FAILURE;
     } else {
-      fprintf(stderr, "[thread %lu] ERROR: worker failed to accept client\n", thread_id);
+      fprintf(stderr, "[thread %lu] ERROR: worker failed to accept client\n", datum->id);
     }
   }
 
   /* Teardown */
-  retire(0);
+  handle_interruption(0);
   return NULL;
 }
 
@@ -314,8 +313,9 @@ int
 main(int argc, char ** argv)
 {
   char * in, * args, buffer[MAX_COMMAND_LENGTH];
+  struct sigaction thread_signal_action, old_signal_action;
+  struct thread_data_t * thread_datum;
   command cmd;
-  struct sigaction thread_signal_action;
   int i;
 
   /* Sanitize input */
@@ -347,36 +347,49 @@ main(int argc, char ** argv)
 
   /* Thread initialization */
   pthread_mutex_init(&session_data.accept_mutex, NULL);
-  /* Worker threads inherit a signal mask that ignore everything but SIGUSR1  */
+  /* Save the old list of blocked signals for later */
+  pthread_sigmask(SIG_SETMASK, NULL, &old_signal_action.sa_mask);
+  /* Worker threads inherit a signal mask that ignores everything except SIGUSRs */
   memset(&thread_signal_action, '\0', sizeof(thread_signal_action));
-  memset(&session_data.signal_action, '\0', sizeof(session_data.signal_action));
-  sigemptyset(&thread_signal_action.sa_mask);
-  pthread_sigmask(SIG_SETMASK, &thread_signal_action.sa_mask, &session_data.signal_action.sa_mask);
-  sigaddset(&thread_signal_action.sa_mask, SIGUSR1);
-  pthread_sigmask(SIG_UNBLOCK, &thread_signal_action.sa_mask, NULL);
+  sigfillset(&thread_signal_action.sa_mask);
+  sigdelset(&thread_signal_action.sa_mask, SIGUSR1);
+  sigdelset(&thread_signal_action.sa_mask, SIGUSR2);
+  thread_signal_action.sa_handler = &handle_interruption;
+  pthread_sigmask(SIG_SETMASK, &thread_signal_action.sa_mask, NULL);
+  /* Afterwhich, all signals should be ignored in the handler */
+  sigfillset(&thread_signal_action.sa_mask);
   /* Kick off the workers */
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
-    if (pthread_create(&session_data.tids[i], NULL, &handle_client, &session_data.tids[i])) {
-      session_data.tids[i] = (pthread_t)(BANKING_FAILURE);
+    /* Thread data initialization */
+    thread_datum = &session_data.thread_data[i];
+    thread_datum->remote_addr_len = sizeof(thread_datum->remote_addr);
+    thread_datum->signal_action = &thread_signal_action;
+    if (pthread_create(&thread_datum->id, NULL, &handle_client, thread_datum)) {
+      thread_datum->id = (pthread_t)(BANKING_FAILURE);
       fprintf(stderr, "WARNING: unable to start worker thread\n");
     }
   }
-  /* Reset the thread signal mask to the prior behavior */
-  pthread_sigmask(SIG_SETMASK, &session_data.signal_action.sa_mask, NULL);
+  /* Reset the thread signal mask to the prior behavior, ignoring SIGUSRs */
+  sigaddset(&old_signal_action.sa_mask, SIGUSR1);
+  sigaddset(&old_signal_action.sa_mask, SIGUSR2);
+  pthread_sigmask(SIG_SETMASK, &old_signal_action.sa_mask, NULL);
 
-  /* Signal initialization */
+  /* Session Signal initialization */
   session_data.caught_signal = 0;
+  memset(&session_data.signal_action, '\0', sizeof(session_data.signal_action));
+  /* The signal handler should ignore SIGTERM and SIGINT */
+  sigemptyset(&session_data.signal_action.sa_mask);
   sigaddset(&session_data.signal_action.sa_mask, SIGTERM);
   sigaddset(&session_data.signal_action.sa_mask, SIGINT);
   session_data.signal_action.sa_handler = &handle_signal;
   /* Make sure any ignored signals remain ignored */
-  sigaction(SIGTERM, &session_data.signal_action, &thread_signal_action);
-  if (thread_signal_action.sa_handler == SIG_IGN) {
-    sigaction(SIGTERM, &thread_signal_action, NULL);
+  sigaction(SIGTERM, NULL, &old_signal_action);
+  if (old_signal_action.sa_handler != SIG_IGN) {
+    sigaction(SIGTERM, &session_data.signal_action, NULL);
   }
-  sigaction(SIGINT, &session_data.signal_action, &thread_signal_action);
-  if (thread_signal_action.sa_handler == SIG_IGN) {
-    sigaction(SIGINT, &thread_signal_action, NULL);
+  sigaction(SIGINT, NULL, &old_signal_action);
+  if (old_signal_action.sa_handler != SIG_IGN) {
+    sigaction(SIGINT, &session_data.signal_action, NULL);
   }
 
   /* Issue an interactive prompt, only quit on signal */
