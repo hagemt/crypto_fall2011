@@ -21,9 +21,26 @@ cmake_minimum_required(VERSION 2.8)
 project(Plouton C)
 
 set(BANKING_VERSION_MAJOR 0)
-set(BANKING_VERSION_MINOR 1)
+set(BANKING_VERSION_MINOR 3)
+
+set(BANKING_VERSION_STRING "v${BANKING_VERSION_MAJOR}.${BANKING_VERSION_MINOR}")
 
 # Configuration
+
+set(BANKING_TERMINAL_COMMAND "gnome-terminal" CACHE STRING "System wrapper shell")
+set(BANKING_SERVER_PORT "49152" CACHE STRING "Default port for server")
+set(BANKING_CLIENT_PORT "49153" CACHE STRING "Default port for client")
+set(BANKING_EXECUTABLE_PATH "${PROJECT_BINARY_DIR}/bin" CACHE STRING "Location for built binaries")
+mark_as_advanced(
+  BANKING_TERMINAL_COMMAND
+  BANKING_SERVER_PORT
+  BANKING_CLIENT_PORT
+  BANKING_EXECUTABLE_PATH
+)
+configure_file(
+  "${PROJECT_SOURCE_DIR}/run_system.sh.in"
+  "${PROJECT_BINARY_DIR}/run_system.sh"
+)
 
 configure_file(
   "${PROJECT_SOURCE_DIR}/banking_constants.h.in"
@@ -36,9 +53,6 @@ include_directories("${PROJECT_BINARY_DIR}")
 option(BUILD_ATM "Produce binaries for the ATM" ON)
 option(BUILD_BANK "Produce binaries for the bank" ON)
 option(BUILD_PROXY "Produce binaries for the proxy" ON)
-option(BUILD_TESTING "Produce testing harnesses" OFF)
-option(CMAKE_VERBOSE_MAKEFILE "Produce verbose Makefiles" OFF)
-mark_as_advanced(CMAKE_VERBOSE_MAKEFILE)
 
 # Libraries
 
@@ -114,7 +128,7 @@ if(BUILD_PROXY)
   target_link_libraries(proxy ${PROXY_LIBRARIES})
 endif(BUILD_PROXY)
 
-set(EXECUTABLE_OUTPUT_PATH "${PROJECT_BINARY_DIR}/bin")
+set(EXECUTABLE_OUTPUT_PATH "${BANKING_EXECUTABLE_PATH}")
 install(
   TARGETS ${CURRENT_EXECUTABLES}
   RUNTIME DESTINATION "${EXECUTABLE_OUTPUT_PATH}"
@@ -122,7 +136,7 @@ install(
 
 # Testing
 
+include(CTest)
 if(BUILD_TESTING)
-  include(CTest)
   set(CTEST_PROJECT_NAME ${CMAKE_PROJECT_NAME})
 endif(BUILD_TESTING)

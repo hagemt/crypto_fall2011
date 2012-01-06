@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+BANK_EXECUTABLE="@BANKING_EXECUTABLE_PATH@/bank"
+PROXY_EXECUTABLE="@BANKING_EXECUTABLE_PATH@/proxy"
+ATM_EXECUTABLE="@BANKING_EXECUTABLE_PATH@/atm"
+if [ ! -x "$BANK_EXECUTABLE"  ]; then echo "Unable to start $BANK_EXECUTABLE";  exit 1; fi
+if [ ! -x "$PROXY_EXECUTABLE" ]; then echo "Unable to start $PROXY_EXECUTABLE"; exit 2; fi
+if [ ! -x "$ATM_EXECUTABLE"   ]; then echo "Unable to start $ATM_EXECUTABLE";   exit 3; fi
+@BANKING_TERMINAL_COMMAND@ \
+  --tab --title="bank @BANKING_VERSION_STRING@"  --command="$BANK_EXECUTABLE  @BANKING_SERVER_PORT@"\
+  --tab --title="proxy @BANKING_VERSION_STRING@" --command="$PROXY_EXECUTABLE @BANKING_CLIENT_PORT@ @BANKING_SERVER_PORT@"\
+  --tab --title="atm @BANKING_VERSION_STRING@"   --command="$ATM_EXECUTABLE   @BANKING_CLIENT_PORT@"
+exit $?
