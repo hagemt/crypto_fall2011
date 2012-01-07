@@ -25,7 +25,7 @@
 #include "banking_constants.h"
 
 #define INIT_COMMAND(CMD_NAME) \
-  { #CMD_NAME, CMD_NAME ## _command, sizeof(#CMD_NAME) },
+  { #CMD_NAME, & CMD_NAME##_command, sizeof(#CMD_NAME) },
 
 /* COMMANDS *******************************************************************/
 
@@ -120,6 +120,40 @@ validate_command(char * cmd, command * fun, char ** args)
 
 /* HANDLES *******************************************************************/
 
+/*
+struct thread_data_t;
+
+#ifdef HANDLE_LOGIN
+int
+handle_login_command(struct thread_data_t *);
+#endif
+
+#ifdef HANDLE_BALANCE
+int
+handle_balance_command(struct thread_data_t *);
+#endif
+
+#ifdef HANDLE_WITHDRAW
+int
+handle_withdraw_command(struct thread_data_t *);
+#endif
+
+#ifdef HANDLE_LOGOUT
+int
+handle_logout_command(struct thread_data_t *);
+#endif
+
+#ifdef HANDLE_TRANSFER
+int
+handle_transfer_command(struct thread_data_t *);
+#endif
+
+#ifdef HANDLE_DEPOSIT
+int
+handle_deposit_command(struct thread_data_t *);
+#endif
+*/
+
 #ifdef HANDLE_LOGIN
 int
 handle_login_command(char *);
@@ -150,33 +184,30 @@ int
 handle_deposit_command(char *);
 #endif
 
+#define INIT_HANDLE(CMD_NAME) \
+  { #CMD_NAME, & handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
+
+/* TODO best way to do this? */
 const struct command_info_t handles[] = {
   #ifdef HANDLE_LOGIN
-  INIT_COMMAND(handle_login)
+  INIT_HANDLE(login)
   #endif
   #ifdef HANDLE_BALANCE
-  INIT_COMMAND(handle_balance)
+  INIT_HANDLE(balance)
   #endif
   #ifdef HANDLE_WITHDRAW
-  INIT_COMMAND(handle_withdraw)
+  INIT_HANDLE(withdraw)
   #endif
   #ifdef HANDLE_LOGOUT
-  INIT_COMMAND(handle_logout)
+  INIT_HANDLE(logout)
   #endif
   #ifdef HANDLE_TRANSFER
-  INIT_COMMAND(handle_transfer)
+  INIT_HANDLE(transfer)
   #endif
   #ifdef HANDLE_DEPOSIT
-  INIT_COMMAND(handle_deposit)
+  INIT_HANDLE(deposit)
   #endif
-  { "handle_ping", NULL, sizeof("handle_ping") }
+  { "ping", NULL, sizeof("ping") }
 };
-
-int
-run_handle(char * cmd)
-{
-  fprintf(stderr, "RUN_HANDLE: '%s'\n", cmd);
-  return BANKING_SUCCESS;
-}
 
 #endif /* BANKING_COMMANDS_H */

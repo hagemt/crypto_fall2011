@@ -42,66 +42,49 @@
 
 /* SESSION DATA **************************************************************/
 
+/* TODO do better saving of username, w/ salting? */
 struct client_session_data_t {
   int sock;
   char * user;
   unsigned char * key;
-  char pbuffer[MAX_COMMAND_LENGTH];
-  unsigned char cbuffer[MAX_COMMAND_LENGTH];
-  char tbuffer[MAX_COMMAND_LENGTH];
+  struct buffet_t buffet;
   struct termios terminal_state;
 } session_data;
 
 inline void
 gather_information(struct client_session_data_t * session_data) {
-    encrypt_command(session_data->pbuffer, session_data->key, session_data->cbuffer);
-    send(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
-    recv(session_data->sock, session_data->cbuffer, MAX_COMMAND_LENGTH, 0);
-    decrypt_command(session_data->cbuffer, session_data->key, session_data->tbuffer);
-}
-
-inline void
-clear_buffers(struct client_session_data_t * session_data) {
-  if (session_data) {
-    /* TODO noncify instead? */
-    memset(session_data->pbuffer, '\0', MAX_COMMAND_LENGTH);
-    memset(session_data->cbuffer, '\0', MAX_COMMAND_LENGTH);
-    memset(session_data->tbuffer, '\0', MAX_COMMAND_LENGTH);
-  }
+  /* TODO use session_data->key instead of keystore.key */
+  encrypt_command(&session_data->buffet, keystore.key);
+  put_message(&session_data->buffet, session_data->sock);
+  get_message(&session_data->buffet, session_data->sock);
+  decrypt_command(&session_data->buffet, keystore.key);
 }
 
 int
 authenticated(struct client_session_data_t * session_data)
 {
-  int i, status = BANKING_FAILURE;
+  int status = BANKING_FAILURE;
   if (session_data && session_data->key) {
-    salt_and_pepper(AUTH_CHECK_MSG, session_data->user, session_data->pbuffer);
+    salt_and_pepper(AUTH_CHECK_MSG, NULL, &session_data->buffet);
     gather_information(session_data);
-    /* tbuffer should contain pbuffer reversed */
-    status = BANKING_SUCCESS;
-    for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-      if (session_data->tbuffer[i] != session_data->pbuffer[MAX_COMMAND_LENGTH - i - 1]) {
-        status = BANKING_FAILURE;
-        break;
-      }
-    }
-    clear_buffers(session_data);
+    status = check_buffers(&session_data->buffet);
+    clear_buffers(&session_data->buffet);
   }
   return status;
 }
 
 int
-acquire_credentials(struct client_session_data_t * session_data, char ** pin)
+acquire_credentials(struct termios * terminal_state, char ** pin)
 {
-  if (tcgetattr(0, &session_data->terminal_state)) {
+  if (tcgetattr(0, terminal_state)) {
     #ifndef NDEBUG
     fprintf(stderr, "ERROR: unable to determine terminal attributes\n");
     #endif
     return BANKING_FAILURE;
   }
 
-  session_data->terminal_state.c_lflag &= ~ECHO;
-  if (tcsetattr(0, TCSANOW, &session_data->terminal_state)) {
+  terminal_state->c_lflag &= ~ECHO;
+  if (tcsetattr(0, TCSANOW, terminal_state)) {
     #ifndef NDEBUG
     fprintf(stderr, "ERROR: unable to disable terminal echo\n");
     #endif
@@ -112,8 +95,8 @@ acquire_credentials(struct client_session_data_t * session_data, char ** pin)
   putchar('\n');
 
   /* TODO signal handler for ensuring ECHO is re-enabled? */
-  session_data->terminal_state.c_lflag |= ECHO;
-  if (tcsetattr(0, TCSANOW, &session_data->terminal_state)) {
+  terminal_state->c_lflag |= ECHO;
+  if (tcsetattr(0, TCSANOW, terminal_state)) {
     #ifndef NDEBUG
     fprintf(stderr, "ERROR: unable to re-enable terminal echo\n");
     #endif
@@ -137,19 +120,19 @@ login_command(char * args)
   for (session_data.user = args; *args != '\0' && i < len; ++i, ++args) {
     if (*args == ' ') { *args = '\0'; i = len; }
   }
-  len = strnlen(args, (size_t)(args - session_data.user));
   #ifndef NDEBUG
   if (*args != '\0') {
     fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", args);
   }
   #endif
 
+  /* Only non-authenticated users may login */
   if (authenticated(&session_data)) {
     request_key(&session_data.key);
-    salt_and_pepper("login", session_data.user, session_data.pbuffer);
+    salt_and_pepper("login", NULL, &session_data.buffet);
     gather_information(&session_data);
-    if (acquire_credentials(&session_data, &pin) == BANKING_SUCCESS) {
-      salt_and_pepper(pin, session_data.user, session_data.pbuffer);
+    if (acquire_credentials(&session_data.terminal_state, &pin) == BANKING_SUCCESS) {
+      salt_and_pepper(pin, NULL, &session_data.buffet);
       gather_information(&session_data);
       /* TODO noncify instead? safe? */
       memset(pin, '\0', strlen(pin));
@@ -159,7 +142,7 @@ login_command(char * args)
       revoke_key(session_data.key);
       printf("AUTHENTICATION FAILURE\n");
     }
-    clear_buffers(&session_data);
+    clear_buffers(&session_data.buffet);
   } else {
     printf("You must 'logout' first.\n");
   }
@@ -178,14 +161,14 @@ balance_command(char * args)
   }
   #endif
 
+  /* Users must first authenticate to check balances */
   if (authenticated(&session_data)) {
-    salt_and_pepper("balance", NULL, session_data.pbuffer);
-    gather_information(&session_data);
-    session_data.tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
-    printf("%s's balance is: %s\n", session_data.user, session_data.tbuffer);
-    clear_buffers(&session_data);
-  } else {
     printf("You must 'login' first.\n");
+  } else {
+    salt_and_pepper("balance", NULL, &session_data.buffet);
+    gather_information(&session_data);
+    printf("%s's balance is: %s\n", session_data.user, strbuffet(&session_data.buffet));
+    clear_buffers(&session_data.buffet);
   }
   return BANKING_SUCCESS;
 }
@@ -195,10 +178,29 @@ balance_command(char * args)
 int
 withdraw_command(char * args)
 {
+  size_t i, len;
+  long amount;
+  char buffer[MAX_COMMAND_LENGTH];
+
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  /* Advance to the first non-space */
+  for (i = 0; *args == ' ' && i < len; ++i, ++args);
+  /* TODO Check for an acceptable value */
+  amount = strtol(args, &args, 10);
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", args);
+  }
+  #endif
+
   if (authenticated(&session_data)) {
     printf("You must 'login' first.\n");
   } else {
-    printf("Ignoring command 'withdraw %s' (not implemented)\n", args);
+    snprintf(buffer, MAX_COMMAND_LENGTH, "withdraw %li", amount);
+    salt_and_pepper(buffer, NULL, &session_data.buffet);
+    gather_information(&session_data);
+    printf("%s\n", strbuffet(&session_data.buffet));
+    clear_buffers(&session_data.buffet);
   }
   return BANKING_SUCCESS;
 }
@@ -218,16 +220,16 @@ logout_command(char * args)
   if (authenticated(&session_data)) {
     printf("You must 'login' first.\n");
   } else {
-    salt_and_pepper("logout", session_data.user, session_data.pbuffer);
+    salt_and_pepper("logout", NULL, &session_data.buffet);
     gather_information(&session_data);
     revoke_key(session_data.key);
   }
  
- /* Ensure we are now not authenticated */
+  /* Ensure we are now not authenticated */
   if (!authenticated(&session_data)) {
     fprintf(stderr, "MISAUTHORIZATION DETECTED\n");
   }
-  clear_buffers(&session_data);
+  clear_buffers(&session_data.buffet);
   
   return BANKING_SUCCESS;
 }
@@ -237,10 +239,35 @@ logout_command(char * args)
 int
 transfer_command(char * args)
 {
+  size_t i, len;
+  long amount;
+  char buffer[MAX_COMMAND_LENGTH], * username;
+
+  /* Advance to the first non-space */
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  for (i = 0; *args == ' ' && i < len; ++i, ++args);
+  /* TODO Check for an acceptable value */
+  amount = strtol(args, &args, 10);
+  /* Advance to the next non-space, and snag the username */
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  for (i = 0; *args == ' ' && i < len; ++i, ++args);
+  for (username = args; *args != '\0' && i < len; ++i, ++args) {
+    if (*args == ' ') { *args = '\0'; i = len; }
+  }
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", args);
+  }
+  #endif
+
   if (authenticated(&session_data)) {
     printf("You must 'login' first.\n");
   } else {
-    printf("Ignoring command 'withdraw %s' (not implemented)\n", args);
+    snprintf(buffer, MAX_COMMAND_LENGTH, "transfer %li %s", amount, username);
+    salt_and_pepper(buffer, NULL, &session_data.buffet);
+    gather_information(&session_data);
+    printf("%s\n", strbuffet(&session_data.buffet));
+    clear_buffers(&session_data.buffet);
   }
   return BANKING_SUCCESS;
 }
@@ -296,6 +323,9 @@ main(int argc, char ** argv)
     in = NULL;
   }
 
+  /* Teardown TODO improve on a blank encrypted message */
+  clear_buffers(&session_data.buffet);
+  gather_information(&session_data);
   destroy_socket(session_data.sock);
   shutdown_crypto(old_shmid(&i));
   putchar('\n');

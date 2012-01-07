@@ -45,7 +45,8 @@
 struct thread_data_t {
   pthread_t id;
   int sock;
-  char buffer[MAX_COMMAND_LENGTH];
+  unsigned char * key;
+  struct buffet_t buffet;
   struct sigaction * signal_action;
   volatile int caught_signal;
   struct sockaddr_storage remote_addr;
@@ -200,7 +201,7 @@ handle_transfer_command(char * args)
 }
 #endif /* HANDLE_TRANSFER */
 
-/* DRIVERS *******************************************************************/
+/* SIGNAL HANDLERS ***********************************************************/
 
 void
 handle_signal(int signum)
@@ -271,6 +272,38 @@ handle_interruption(int signum)
   }
 }
 
+/* CLIENT HANDLERS ***********************************************************/
+
+inline void
+gather_information(struct thread_data_t * datum, char * buffer) {
+  get_message(&datum->buffet, datum->sock);
+  /* TODO switch keystore.key for datum->key */
+  decrypt_command(&datum->buffet, keystore.key);
+  strncpy(buffer, strbuffet(&datum->buffet), MAX_COMMAND_LENGTH);
+}
+
+int
+handle_instruction(struct thread_data_t * datum) {
+  char command[MAX_COMMAND_LENGTH];
+  gather_information(datum, command);
+  /* TODO more robust termination mechanism */
+  if (*command == '\0') { return BANKING_FAILURE; }
+  #ifndef NDEBUG
+  fprintf(stderr, "[thread %lu] RECV: '%s'\n", datum->id, command);
+  #endif
+
+  /* TODO actually handle authentication request */
+  drill_buffers(&datum->buffet);
+  /* TODO switch keystore.key for datum->key */
+  encrypt_command(&datum->buffet, keystore.key);
+  put_message(&datum->buffet, datum->sock);
+  /* TODO actually refer to handles above */
+  /* TODO datum->caught_signal = 0; */
+
+  clear_buffers(&datum->buffet);
+  return BANKING_SUCCESS;
+}
+
 void *
 handle_client(void * arg)
 {
@@ -292,10 +325,10 @@ handle_client(void * arg)
     if (datum->sock >= 0) {
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
-      memset(datum->buffer, '\0', MAX_COMMAND_LENGTH);
-      recv(datum->sock, datum->buffer, MAX_COMMAND_LENGTH, 0);
-      datum->buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-      fprintf(stderr, "[thread %lu] RECV: '%s'\n", datum->id, datum->buffer);
+      #endif
+      while (handle_instruction(datum));
+      #ifndef NDEBUG
+      fprintf(stderr, "[thread %lu] INFO: client disconnected\n", datum->id);
       #endif
       destroy_socket(datum->sock);
       datum->sock = BANKING_FAILURE;

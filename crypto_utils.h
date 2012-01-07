@@ -32,11 +32,13 @@
 
 #include "banking_constants.h"
 
-/* Shared memory includes TODO remove */
+/* SHARED MEMORY TODO REMOVE *************************************************/
+
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/errno.h>
+
 inline int * new_shmid(int * shmid) {
   char * shmem;
   #ifndef NDEBUG
@@ -54,6 +56,7 @@ inline int * new_shmid(int * shmid) {
   #endif
   return shmid;
 }
+
 inline int * old_shmid(int * shmid) {
   *shmid = shmget(BANKING_SHMKEY, sizeof(AUTH_CHECK_MSG), 0666);
   #ifndef NDEBUG
@@ -64,8 +67,7 @@ inline int * old_shmid(int * shmid) {
 
 /*** KEYSTORE, ISSUING AND REVOCATION ****************************************/
 
-struct
-key_list_t {
+struct key_list_t {
   time_t issued, expires;
   unsigned char * key;
   struct key_list_t * next;
@@ -75,6 +77,9 @@ int
 request_key(unsigned char ** key)
 {
   struct key_list_t * entry;
+  /* TODO remove this */
+  *key = keystore.key;
+  return BANKING_SUCCESS;
 
   /* Attempt to produce a new key entry */
   if ((entry = malloc(sizeof(struct key_list_t)))) {
@@ -97,6 +102,8 @@ int
 revoke_key(unsigned char * key)
 {
   struct key_list_t * entry;
+  /* TODO remove this */
+  return BANKING_SUCCESS;
 
   /* Check if the keystore is valid */
   if (keystore.issued < keystore.expires) {
@@ -204,37 +211,95 @@ shutdown_crypto(const int * const shmid)
 
 /*** ENCRYPTION AND DECRYPTION ***********************************************/
 
+/*! \brief An array of buffers is a buffet! */
+struct buffet_t {
+  char pbuffer[MAX_COMMAND_LENGTH], tbuffer[MAX_COMMAND_LENGTH];
+  unsigned char cbuffer[MAX_COMMAND_LENGTH];
+};
+
+inline char *
+strbuffet(struct buffet_t * buffet) {
+  buffet->tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
+  return buffet->tbuffer;
+}
+
 void
-encrypt_command(char * input, void * key, unsigned char * output)
+drill_buffers(struct buffet_t * buffet)
 {
+  int i;
+  for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+    buffet->pbuffer[i] = buffet->tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+  }
+}
+
+int
+check_buffers(struct buffet_t * buffet)
+{
+  int i, status = BANKING_FAILURE;
+  if (buffet) {
+    status = BANKING_SUCCESS;
+    /* tbuffer should contain pbuffer reversed */
+    for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+      if (buffet->tbuffer[i] != buffet->pbuffer[MAX_COMMAND_LENGTH - 1 - i]) {
+        status = BANKING_FAILURE;
+        break;
+      }
+    }
+  }
+  return status;
+}
+
+inline void
+clear_buffers(struct buffet_t * buffet) {
+  if (buffet) {
+    /* TODO noncify instead? */
+    memset(buffet->pbuffer, '\0', MAX_COMMAND_LENGTH);
+    memset(buffet->cbuffer, '\0', MAX_COMMAND_LENGTH);
+    memset(buffet->tbuffer, '\0', MAX_COMMAND_LENGTH);
+  }
+}
+
+inline void
+encrypt_command(struct buffet_t * buffet, void * key) {
   /* gcry_error_t error_code; */
   gcry_cipher_hd_t handle;
 
   gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
   gcry_cipher_setkey(handle, key, AUTH_KEY_LENGTH);
 
-  gcry_cipher_encrypt(handle, output, MAX_COMMAND_LENGTH, (unsigned char *)input, MAX_COMMAND_LENGTH);
+  gcry_cipher_encrypt(handle, buffet->cbuffer, MAX_COMMAND_LENGTH, (unsigned char *)(buffet->pbuffer), MAX_COMMAND_LENGTH);
 
   gcry_cipher_close(handle);
 }
 
-void
-decrypt_command(unsigned char * input, void * key, char * output)
-{
+inline void
+decrypt_command(struct buffet_t * buffet, void * key) {
   /* gcry_error_t error_code; */
   gcry_cipher_hd_t handle;
 
   gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
   gcry_cipher_setkey(handle, key, AUTH_KEY_LENGTH);
 
-  gcry_cipher_decrypt(handle, (unsigned char *)output, MAX_COMMAND_LENGTH, input, MAX_COMMAND_LENGTH);
+  gcry_cipher_decrypt(handle, (unsigned char *)(buffet->tbuffer), MAX_COMMAND_LENGTH, buffet->cbuffer, MAX_COMMAND_LENGTH);
 
   gcry_cipher_close(handle);
+}
+
+inline ssize_t
+put_message(struct buffet_t * buffet, int sock) {
+  /* TODO AAA feature */
+  return send(sock, buffet->cbuffer, MAX_COMMAND_LENGTH, 0);
+}
+
+inline ssize_t
+get_message(struct buffet_t * buffet, int sock) {
+  /* TODO AAA feature */
+  return recv(sock, buffet->cbuffer, MAX_COMMAND_LENGTH, 0);
 }
 
 /*** UTILITY FUNCTIONS (INCL. CHECKSUM) **************************************/
 
-inline void
+void
 fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
 {
   size_t i;
@@ -253,34 +318,50 @@ fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
  *  \param salt    Either NULL or data to XOR with the message
  *  \param buffer  A buffer of size MAX_COMMAND_LENGTH (mandatory)
  */
-inline void
-salt_and_pepper(char * msg, const char * salt, char * buffer) {
+void
+salt_and_pepper(char * msg, const char * salt, struct buffet_t * buffet)
+{
   size_t i, mlen, slen;
 
   /* Buffer the first MAX_COMMAND_LENGTH bytes of the message */
   mlen = strnlen(msg, MAX_COMMAND_LENGTH);
-  strncpy(buffer, msg, mlen);
+  strncpy(buffet->pbuffer, msg, mlen);
+  /* Don't loose the terminator */
+  if (mlen < MAX_COMMAND_LENGTH) {
+    buffet->pbuffer[mlen] = '\0';
+  }
 
-  /* Salt the message with cyclic copies of the 
-   * (ex. salt = "SALT", msg = "MESSAGE", buffer = "MESSAGE" ^ "SALTSAL")
+  /* XOR the message with cyclic copies of the salt
+   * (for example, msg: "MESSAGE"; salt: "SALT"; yields:
+   *  buffer: "MESSAGE" ^ "SALTSAL" + '\0' + nonce)
    */
-  if (salt) {
-    slen = strnlen(salt, MAX_COMMAND_LENGTH);
+  if (salt && (slen = strnlen(salt, MAX_COMMAND_LENGTH)) > 0) {
     for (i = 0; i < mlen; ++i) {
-      buffer[i] ^= salt[i % slen];
+      buffet->pbuffer[i] ^= salt[i % slen];
     }
   }
 
   /* Make sure the message is peppered with nonce */
-  gcry_create_nonce(buffer + mlen, MAX_COMMAND_LENGTH - mlen);
+  if (++mlen < MAX_COMMAND_LENGTH) {
+    gcry_create_nonce(buffet->pbuffer + mlen, MAX_COMMAND_LENGTH - mlen);
+  }
 }
 
+/*! \brief Produce the message digest of a banking command
+ *
+ *  \param cmd    The command to checksum
+ *  \param digest If non-NULL, check this against the hash of cmd
+ *  \param buffer If NULL, hash to a temporary array
+ *                If points to NULL, malloc space for the hash here
+ *                Otherwise, buffer is assumed to be appropriate
+ *  \return       0 if cmd hashes to digest, non-zero otherwise
+ */
 int
 checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
 {
+  unsigned char * temporary;
   int status;
   size_t len;
-  unsigned char * temporary;
 
   temporary = NULL;
   status = BANKING_SUCCESS;
@@ -299,11 +380,11 @@ checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
   }
 
   /* Try to take the hash of the command and buffer it */
-  gcry_md_hash_buffer(GCRY_MD_SHA256, *buffer, (const void *)cmd, MAX_COMMAND_LENGTH);
+  gcry_md_hash_buffer(GCRY_MD_SHA256, *buffer, (const void *)(cmd), MAX_COMMAND_LENGTH);
 
   /* If a digest value was given, check it */
   if (digest) {
-    status = strncmp((char *)*buffer, (char *)digest, len);
+    status = strncmp((char *)(*buffer), (char *)(digest), len);
     #ifndef NDEBUG
     fprintf(stderr, "INFO: sha256sum('%s')", cmd);
     fprintx(stderr, " ?", digest, len);
@@ -353,18 +434,17 @@ print_keystore(FILE * fp)
 int
 test_crypto()
 {
-  char * m, * p;
-  unsigned char * c, * k, * s;
+  char * msg;
+  struct buffet_t buffet;
+  unsigned char * key, * md;
 
-  m = calloc(MAX_COMMAND_LENGTH, sizeof(char));
-  c = calloc(MAX_COMMAND_LENGTH, sizeof(char));
-  p = calloc(MAX_COMMAND_LENGTH, sizeof(char));
-  strncpy(m, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
+  msg = calloc(MAX_COMMAND_LENGTH, sizeof(char));
+  strncpy(msg, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
 
   /* key request test */
   fprintf(stderr, "INTIAL STATE:\n");
   print_keystore(stderr);
-  if (request_key(&k)) {
+  if (request_key(&key)) {
     fprintf(stderr, "ERROR: cannot obtain key\n");
     return BANKING_FAILURE;
   }
@@ -372,14 +452,14 @@ test_crypto()
   print_keystore(stderr);
 
   /* encryption test */
-  encrypt_command(m, k, c);
-  decrypt_command(c, k, p);
-  fprintf(stderr, "MSG: '%s'\n", m);
-  fprintx(stderr, "RAW", (unsigned char *)m, MAX_COMMAND_LENGTH);
-  fprintx(stderr, "KEY", k, AUTH_KEY_LENGTH);
-  fprintx(stderr, "ENC", c, MAX_COMMAND_LENGTH);
-  fprintf(stderr, "DEC: '%s'\n", p);
-  if (strncmp((char *)m, (char *)p, MAX_COMMAND_LENGTH)) {
+  encrypt_command(&buffet, key);
+  decrypt_command(&buffet, key);
+  fprintf(stderr, "MSG: '%s'\n", msg);
+  fprintx(stderr, "RAW", (unsigned char *)(msg), MAX_COMMAND_LENGTH);
+  fprintx(stderr, "KEY", key, AUTH_KEY_LENGTH);
+  fprintx(stderr, "ENC", buffet.cbuffer, MAX_COMMAND_LENGTH);
+  fprintf(stderr, "DEC: '%s'\n", buffet.tbuffer);
+  if (strncmp(msg, buffet.tbuffer, MAX_COMMAND_LENGTH)) {
     fprintf(stderr, "WARNING: plaintext does not match\n");
   }
   fprintf(stderr, "\n");
@@ -387,27 +467,25 @@ test_crypto()
   /* key revocation test */
   fprintf(stderr, "AFTER ENCRYPTION:\n");
   print_keystore(stderr);
-  if (revoke_key(k)) {
+  if (revoke_key(key)) {
     fprintf(stderr, "WARNING: cannot revoke key\n");
   }
   fprintf(stderr, "AFTER REVOCATION:\n");
   print_keystore(stderr);
 
   /* checksum test */
-  s = NULL;
-  if (checksum(m, NULL, &s)) {
+  md = NULL;
+  if (checksum(msg, NULL, &md)) {
     fprintf(stderr, "ERROR: cannot checksum message\n");
   }
-  if (checksum(m, s, NULL)) {
+  if (checksum(msg, md, NULL)) {
     fprintf(stderr, "ERROR: cannot verify message checksum\n");
   } else {
     fprintf(stderr, "INFO: checksum verified\n");
   }
-  free(s);
+  free(md);
 
-  free(m);
-  free(c);
-  free(p);
+  free(msg);
 
   return BANKING_SUCCESS;
 }
