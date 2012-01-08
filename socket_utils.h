@@ -142,4 +142,30 @@ init_server_socket(const char * port)
   return sock;
 }
 
+inline void
+hexdump(unsigned char * buffer, size_t len) {
+  size_t i, j;
+  unsigned int mark;
+  /* While there's still buffer, handle lines */
+  for (mark = 0x0, i = 0; i < len; mark += 0x10, i = j) {
+    /* Print index marker */
+    printf("[%08X] ", mark);
+    /* Print sixteen bytes per row */
+    for (j = i; j < len && (j - i) < 16; ++j) {
+      printf("%X%X ", (buffer[j] & 0xF0) >> 4, (buffer[j] & 0x0F));
+    }
+    /* Pad if necessary */
+    for (j -= i; j < 16; ++j) {
+      printf("   ");
+    }
+    /* Put a spacer */
+    putchar(' ');
+    /* Tack on the ASCII representation, dots for non-printables */
+    for (j = i; j < len && (j - i) < 16; ++j) {
+      printf("%c", (buffer[j] < ' ' || buffer[j] > '~') ? '.' : buffer[j]);
+    }
+    putchar('\n');
+  }
+}
+
 #endif

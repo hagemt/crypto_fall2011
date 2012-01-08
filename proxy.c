@@ -93,7 +93,7 @@ handle_relay(struct proxy_session_data_t * session, ssize_t * r, ssize_t * s) {
 int
 main(int argc, char ** argv)
 {
-  ssize_t received, sent;
+  ssize_t received, sent, bytes;
 
   /* Input sanitation */
   if (argc != 3) {
@@ -126,12 +126,13 @@ main(int argc, char ** argv)
     while (!handle_relay(&session_data, &received, &sent)) {
       /* Report leaky transmissions */
       if (sent != received) {
-        fprintf(stderr, "ERROR: %li bytes lost\n", (long)(sent - received));
+        bytes = sent - received;
+        if (bytes < 0) { bytes = -bytes; }
+        fprintf(stderr, "ERROR: %li byte(s) lost\n", (long)(bytes));
       }
       #ifndef NDEBUG
       /* Report entire transmission */
-      session_data.buffer[MAX_COMMAND_LENGTH - 1] = '\0';
-      printf("FW: '%s'\n", session_data.buffer);
+      hexdump(session_data.buffer, MAX_COMMAND_LENGTH);
       #endif
     }
     time(&session_data.terminated);
