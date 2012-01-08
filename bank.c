@@ -45,7 +45,7 @@
 struct thread_data_t {
   pthread_t id;
   int sock;
-  unsigned char * key;
+  struct credential_t credentials;
   struct buffet_t buffet;
   struct sigaction * signal_action;
   volatile int caught_signal;
@@ -160,7 +160,37 @@ deposit_command(char * args)
 int
 handle_login_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] INFO: login handled '%s' (argument residue)\n", datum->id, args);
+  size_t i, len;
+  char buffer[MAX_COMMAND_LENGTH];
+
+  /* Receive the PIN */
+  recv_message(&datum->buffet, datum->sock);
+  decrypt_message(&datum->buffet, datum->credentials.key);
+  /* Copy the args backward TODO better auth */
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  memset(buffer, '\0', MAX_COMMAND_LENGTH);
+  for (i = 0; i < len; ++i) {
+    buffer[i] = args[len - i - 1];
+  }
+
+  /* Check the buffer matches the args */
+  if (strncmp(buffer, strbuffet(&datum->buffet), len)) {
+    snprintf(buffer, MAX_COMMAND_LENGTH, "LOGIN ERROR");
+  } else {
+    snprintf(buffer, MAX_COMMAND_LENGTH, "Welcome, %s!", args);
+    set_user(&datum->credentials, args);
+  }
+  salt_and_pepper(buffer, NULL, &datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
+
+  /* Catch authentication check TODO actually */
+  recv_message(&datum->buffet, datum->sock);
+  decrypt_message(&datum->buffet, datum->credentials.key);
+  cfdbuffet(&datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
+
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_LOGIN */
@@ -169,7 +199,27 @@ handle_login_command(struct thread_data_t * datum, char * args)
 int
 handle_balance_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] INFO: balance handled '%s' (argument residue)\n", datum->id, args);
+  long int balance;
+  char buffer[MAX_COMMAND_LENGTH];
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
+  }
+  #endif
+  memset(buffer, '\0', MAX_COMMAND_LENGTH);
+  if (do_lookup(session_data.db_conn, NULL,
+                datum->credentials.username,
+                datum->credentials.length,
+                &balance)) {
+    snprintf(buffer, MAX_COMMAND_LENGTH, "BALANCE ERROR");
+  } else {
+    snprintf(buffer, MAX_COMMAND_LENGTH,
+             "%s, your balance is $%li.",
+             datum->credentials.username, balance);
+  }
+  salt_and_pepper(buffer, NULL, &datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_BALANCE */
@@ -178,7 +228,7 @@ handle_balance_command(struct thread_data_t * datum, char * args)
 int
 handle_withdraw_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] INFO: withdraw handled '%s' (argument residue)\n", datum->id, args);
+  fprintf(stderr, "[thread %lu] WARNING: ignoring '%s %s' (unimplemented command)\n", datum->id, "withdraw", args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_WITHDRAW */
@@ -187,7 +237,37 @@ handle_withdraw_command(struct thread_data_t * datum, char * args)
 int
 handle_logout_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] INFO: logout handled '%s' (argument residue)\n", datum->id, args);
+  char buffer[MAX_COMMAND_LENGTH];
+
+  /* Logout command takes no arguments */
+  #ifndef NDEBUG
+  if (*args != '\0') {
+    fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
+  }
+  #endif
+
+  /* Send reply TODO actual deauthentication */
+  memset(buffer, '\0', MAX_COMMAND_LENGTH);
+  if (datum->credentials.length) {
+    snprintf(buffer, MAX_COMMAND_LENGTH, "Goodbye, %s!", datum->credentials.username);
+  } else {
+    snprintf(buffer, MAX_COMMAND_LENGTH, "LOGOUT ERROR");
+  }
+  salt_and_pepper(buffer, NULL, &datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  memset(&datum->credentials, '\0', sizeof(struct credential_t));
+  send_message(&datum->buffet, datum->sock);
+
+  /* Handle verification (should fail) */
+  recv_message(&datum->buffet, datum->sock);
+  decrypt_message(&datum->buffet, datum->credentials.key);
+  cfdbuffet(&datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
+
+  /* TODO REMOVE */
+  request_key(&datum->credentials.key);
+
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_LOGOUT */
@@ -196,7 +276,7 @@ handle_logout_command(struct thread_data_t * datum, char * args)
 int
 handle_transfer_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] INFO: transfer handled '%s' (argument residue)\n", datum->id, args);
+  fprintf(stderr, "[thread %lu] WARNING: ignoring '%s %s' (unimplemented command)\n", datum->id, "transfer", args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_TRANSFER */
@@ -279,31 +359,40 @@ handle_message(struct thread_data_t * datum) {
   handle_t hdl;
   char msg[MAX_COMMAND_LENGTH], * args;
 
-  request_key(&datum->key);
+  /* Start the authentication process TODO actual key exchange */
+  request_key(&datum->credentials.key);
   /* TODO assume all communication is encrypted? */
-  get_message(&datum->buffet, datum->sock);
-  decrypt_command(&datum->buffet, datum->key);
+  recv_message(&datum->buffet, datum->sock);
+  decrypt_message(&datum->buffet, datum->credentials.key);
+  /* The initial message is always an authentication request */
+  if (strncmp(strbuffet(&datum->buffet), AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
+    #ifndef NDEBUG
+    fprintf(stderr, "[thread %lu] INFO: malformed authentication message\n", datum->id);
+    #endif
+    return BANKING_FAILURE;
+  }
+
+  /* TODO actually handle authentication request */
+  cfdbuffet(&datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
+  clrbuffet(&datum->buffet);
+
+  /* Read the actual command */
+  recv_message(&datum->buffet, datum->sock);
+  decrypt_message(&datum->buffet, datum->credentials.key);
   strncpy(msg, strbuffet(&datum->buffet), MAX_COMMAND_LENGTH);
   #ifndef NDEBUG
   /* Local echo for all received messages */
-  fprintf(stderr, "[thread %lu] worker received message:\n", datum->id);
-  hexdump((unsigned char *)(msg), MAX_COMMAND_LENGTH);
+  fprintf(stderr, "[thread %lu] INFO: worker received message:\n", datum->id);
+  hexdump(stderr, (unsigned char *)(msg), MAX_COMMAND_LENGTH);
   #endif
-
-  /* The SYN command is always an AUTH req */
-  if (strncmp(msg, AUTH_CHECK_MSG, MAX_COMMAND_LENGTH)) {
-    return BANKING_FAILURE;
-  }
-  /* TODO actually handle authentication request */
-  cfdbuffet(&datum->buffet);
-  encrypt_command(&datum->buffet, datum->key);
-  put_message(&datum->buffet, datum->sock);
-  clrbuffet(&datum->buffet);
-
   /* Disconnect from any client that issues malformed commands */
   if (fetch_handle(msg, &hdl, &args)) {
     return BANKING_FAILURE;
   }
+
+  /* We are signaled by failed handlers */
   datum->caught_signal = hdl(datum, args);
   return BANKING_SUCCESS;
 }
@@ -324,20 +413,22 @@ handle_client(void * arg)
   /* As long as possible, grab up whatever connection is available */
   while (!session_data.caught_signal && !datum->caught_signal) {
     pthread_mutex_lock(&session_data.accept_mutex);
-    datum->sock = accept(session_data.sock, (struct sockaddr *)(&datum->remote_addr), &datum->remote_addr_len);
+    datum->sock = accept(session_data.sock,
+                         (struct sockaddr *)(&datum->remote_addr),
+                         &datum->remote_addr_len);
     pthread_mutex_unlock(&session_data.accept_mutex);
     if (datum->sock >= 0) {
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
       #endif
-      while (handle_message(datum));
+      while (handle_message(datum) == BANKING_SUCCESS);
       #ifndef NDEBUG
-      fprintf(stderr, "[thread %lu] INFO: client disconnected\n", datum->id);
+      fprintf(stderr, "[thread %lu] INFO: worker disconnected from client\n", datum->id);
       #endif
       destroy_socket(datum->sock);
       datum->sock = BANKING_FAILURE;
     } else {
-      fprintf(stderr, "[thread %lu] ERROR: worker failed to accept client\n", datum->id);
+      fprintf(stderr, "[thread %lu] ERROR: worker unable to connect\n", datum->id);
     }
   }
 
@@ -398,6 +489,8 @@ main(int argc, char ** argv)
   for (i = 0; i < MAX_CONNECTIONS; ++i) {
     /* Thread data initialization */
     thread_datum = &session_data.thread_data[i];
+    memset(thread_datum, '\0', sizeof(struct thread_data_t));
+    thread_datum->sock = BANKING_FAILURE;
     thread_datum->remote_addr_len = sizeof(thread_datum->remote_addr);
     thread_datum->signal_action = &thread_signal_action;
     if (pthread_create(&thread_datum->id, NULL, &handle_client, thread_datum)) {
