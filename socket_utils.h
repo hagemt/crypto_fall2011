@@ -45,6 +45,8 @@ destroy_socket(int sock)
   }
 }
 
+/*** SOCKET CREATION *********************************************************/
+
 int
 create_socket(const char * port, struct sockaddr_in * local_addr)
 {
@@ -133,39 +135,43 @@ init_server_socket(const char * port)
   }
   #ifndef NDEBUG
   printf("INFO: listening on port %hu\n", ntohs(local_addr.sin_port));
-  /* TODO look more closely at overflow
-   * fprintf(stderr, "sizeof(local_addr.sin_port) = %lu\n", sizeof(local_addr.sin_port));
-   * fprintf(stderr, "sizeof(ntohs(local_addr.sin_port)) = %lu\n", sizeof(ntohs(local_addr.sin_port)));
+  /* TODO look more closely at (possible?) overflow
+   * fprintf(stderr, "sizeof(local_addr.sin_port) = %lu\n",
+   *                  sizeof(local_addr.sin_port));
+   * fprintf(stderr, "sizeof(ntohs(local_addr.sin_port)) = %lu\n",
+   *                  sizeof(ntohs(local_addr.sin_port)));
    */
   #endif
 
   return sock;
 }
 
+/*** UTILITIES ****************************************************************/
+
 inline void
-hexdump(unsigned char * buffer, size_t len) {
+hexdump(FILE * fp, unsigned char * buffer, size_t len) {
   size_t i, j;
   unsigned int mark;
   /* While there's still buffer, handle lines */
   for (mark = 0x0, i = 0; i < len; mark += 0x10, i = j) {
     /* Print index marker */
-    printf("[%08X] ", mark);
+    fprintf(fp, "[%08X] ", mark);
     /* Print sixteen bytes per row */
     for (j = i; j < len && (j - i) < 16; ++j) {
-      printf("%X%X ", (buffer[j] & 0xF0) >> 4, (buffer[j] & 0x0F));
+      fprintf(fp, "%X%X ", (buffer[j] & 0xF0) >> 4, (buffer[j] & 0x0F));
     }
     /* Pad if necessary */
     for (j -= i; j < 16; ++j) {
-      printf("   ");
+      fprintf(fp, "   ");
     }
     /* Put a spacer */
-    putchar(' ');
+    putc(' ', fp);
     /* Tack on the ASCII representation, dots for non-printables */
     for (j = i; j < len && (j - i) < 16; ++j) {
-      printf("%c", (buffer[j] < ' ' || buffer[j] > '~') ? '.' : buffer[j]);
+      putc((buffer[j] < ' ' || buffer[j] > '~') ? '.' : buffer[j], fp);
     }
-    putchar('\n');
+    putc('\n', fp);
   }
 }
 
-#endif
+#endif /* SOCKET_UTILS_H */
