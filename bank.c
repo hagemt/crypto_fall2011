@@ -158,45 +158,45 @@ deposit_command(char * args)
 
 #ifdef HANDLE_LOGIN
 int
-handle_login_command(char * args)
+handle_login_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "INFO: login handled '%s' (argument residue)\n", args);
+  fprintf(stderr, "[thread %lu] INFO: login handled '%s' (argument residue)\n", datum->id, args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_LOGIN */
 
 #ifdef HANDLE_BALANCE
 int
-handle_balance_command(char * args)
+handle_balance_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "INFO: balance handled '%s' (argument residue)\n", args);
+  fprintf(stderr, "[thread %lu] INFO: balance handled '%s' (argument residue)\n", datum->id, args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_BALANCE */
 
 #ifdef HANDLE_WITHDRAW
 int
-handle_withdraw_command(char * args)
+handle_withdraw_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "INFO: withdraw handled '%s' (argument residue)\n", args);
+  fprintf(stderr, "[thread %lu] INFO: withdraw handled '%s' (argument residue)\n", datum->id, args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_WITHDRAW */
 
 #ifdef HANDLE_LOGOUT
 int
-handle_logout_command(char * args)
+handle_logout_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "INFO: logout handled '%s' (argument residue)\n", args);
+  fprintf(stderr, "[thread %lu] INFO: logout handled '%s' (argument residue)\n", datum->id, args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_LOGOUT */
 
 #ifdef HANDLE_TRANSFER
 int
-handle_transfer_command(char * args)
+handle_transfer_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "INFO: transfer handled '%s' (argument residue)\n", args);
+  fprintf(stderr, "[thread %lu] INFO: transfer handled '%s' (argument residue)\n", datum->id, args);
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_TRANSFER */
@@ -274,33 +274,37 @@ handle_interruption(int signum)
 
 /* CLIENT HANDLERS ***********************************************************/
 
-inline void
-gather_information(struct thread_data_t * datum, char * buffer) {
-  get_message(&datum->buffet, datum->sock);
-  /* TODO switch keystore.key for datum->key */
-  decrypt_command(&datum->buffet, keystore.key);
-  strncpy(buffer, strbuffet(&datum->buffet), MAX_COMMAND_LENGTH);
-}
-
 int
-handle_instruction(struct thread_data_t * datum) {
-  char command[MAX_COMMAND_LENGTH];
-  gather_information(datum, command);
-  /* TODO more robust termination mechanism */
-  if (*command == '\0') { return BANKING_FAILURE; }
+handle_message(struct thread_data_t * datum) {
+  handle_t hdl;
+  char msg[MAX_COMMAND_LENGTH], * args;
+
+  request_key(&datum->key);
+  /* TODO assume all communication is encrypted? */
+  get_message(&datum->buffet, datum->sock);
+  decrypt_command(&datum->buffet, datum->key);
+  strncpy(msg, strbuffet(&datum->buffet), MAX_COMMAND_LENGTH);
   #ifndef NDEBUG
-  fprintf(stderr, "[thread %lu] RECV: '%s'\n", datum->id, command);
+  /* Local echo for all received messages */
+  fprintf(stderr, "[thread %lu] worker received message:\n", datum->id);
+  hexdump((unsigned char *)(msg), MAX_COMMAND_LENGTH);
   #endif
 
+  /* The SYN command is always an AUTH req */
+  if (strncmp(msg, AUTH_CHECK_MSG, MAX_COMMAND_LENGTH)) {
+    return BANKING_FAILURE;
+  }
   /* TODO actually handle authentication request */
-  drill_buffers(&datum->buffet);
-  /* TODO switch keystore.key for datum->key */
-  encrypt_command(&datum->buffet, keystore.key);
+  cfdbuffet(&datum->buffet);
+  encrypt_command(&datum->buffet, datum->key);
   put_message(&datum->buffet, datum->sock);
-  /* TODO actually refer to handles above */
-  /* TODO datum->caught_signal = 0; */
+  clrbuffet(&datum->buffet);
 
-  clear_buffers(&datum->buffet);
+  /* Disconnect from any client that issues malformed commands */
+  if (fetch_handle(msg, &hdl, &args)) {
+    return BANKING_FAILURE;
+  }
+  datum->caught_signal = hdl(datum, args);
   return BANKING_SUCCESS;
 }
 
@@ -326,7 +330,7 @@ handle_client(void * arg)
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
       #endif
-      while (handle_instruction(datum));
+      while (handle_message(datum));
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: client disconnected\n", datum->id);
       #endif
@@ -345,11 +349,10 @@ handle_client(void * arg)
 int
 main(int argc, char ** argv)
 {
+  command_t cmd; int i;
   char * in, * args, buffer[MAX_COMMAND_LENGTH];
   struct sigaction thread_signal_action, old_signal_action;
   struct thread_data_t * thread_datum;
-  command cmd;
-  int i;
 
   /* Sanitize input */
   if (argc != 2) {

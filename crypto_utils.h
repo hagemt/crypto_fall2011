@@ -224,7 +224,7 @@ strbuffet(struct buffet_t * buffet) {
 }
 
 void
-drill_buffers(struct buffet_t * buffet)
+cfdbuffet(struct buffet_t * buffet)
 {
   int i;
   for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
@@ -233,7 +233,7 @@ drill_buffers(struct buffet_t * buffet)
 }
 
 int
-check_buffers(struct buffet_t * buffet)
+cmpbuffet(struct buffet_t * buffet)
 {
   int i, status = BANKING_FAILURE;
   if (buffet) {
@@ -250,7 +250,7 @@ check_buffers(struct buffet_t * buffet)
 }
 
 inline void
-clear_buffers(struct buffet_t * buffet) {
+clrbuffet(struct buffet_t * buffet) {
   if (buffet) {
     /* TODO noncify instead? */
     memset(buffet->pbuffer, '\0', MAX_COMMAND_LENGTH);
