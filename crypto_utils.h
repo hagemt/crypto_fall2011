@@ -77,14 +77,16 @@ int
 request_key(unsigned char ** key)
 {
   struct key_list_t * entry;
-  /* TODO remove this */
+
+  /* TODO REMOVE */
   *key = keystore.key;
   return BANKING_SUCCESS;
 
   /* Attempt to produce a new key entry */
   if ((entry = malloc(sizeof(struct key_list_t)))) {
     /* Generate the actual key */
-    if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
+    if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH,
+                                         GCRY_STRONG_RANDOM))) {
       entry->expires = time(&entry->issued) + AUTH_KEY_TIMEOUT;
       entry->key = *key;
       /* Finally, add the completed key entry */
@@ -99,10 +101,11 @@ request_key(unsigned char ** key)
 }
 
 int
-revoke_key(unsigned char * key)
+revoke_key(unsigned char ** key)
 {
   struct key_list_t * entry;
-  /* TODO remove this */
+
+  /* TODO REMOVE */
   return BANKING_SUCCESS;
 
   /* Check if the keystore is valid */
@@ -112,12 +115,12 @@ revoke_key(unsigned char * key)
       /* Check only valid keys */
       if (entry->issued < entry->expires) {
         /* Check if the key matches */
-        if (!strncmp((char *)entry->key, (char *)key, AUTH_KEY_LENGTH)) {
+        if (!strncmp((char *)(entry->key), (char *)(*key), AUTH_KEY_LENGTH)) {
           /* If so, force it to expire and purge */
           entry->expires = entry->issued;
           gcry_create_nonce(entry->key, AUTH_KEY_LENGTH);
           gcry_free(entry->key);
-          entry->key = NULL;
+          entry->key = *key = NULL;
           return BANKING_SUCCESS;
         }
       }
@@ -129,7 +132,7 @@ revoke_key(unsigned char * key)
 
 /*** INITIALIZATION AND TERMINATION ******************************************/
 
-/* \brief TODO remove
+/* \brief TODO REPLACE
  * If shmsp is NULL, do not use shared memory.
  * Otherwise, access it. Put the keystore here if one does not already exist.
  */
@@ -138,8 +141,9 @@ init_crypto(const int * const shmid)
 {
   /* Reset the keystore */
   keystore.expires = time(&keystore.issued) + AUTH_KEY_TIMEOUT * AUTH_KEY_TIMEOUT;
-  /* TODO remove temporary shared memory business, do actual OTP */
   keystore.key = (unsigned char *)(-1);
+
+  /* TODO REMOVE, temporary shared memory solution */
   if (shmid) {
     keystore.key = (unsigned char *)(shmat(*shmid, NULL, SHM_RDONLY));
     #ifndef NDEBUG
@@ -180,10 +184,12 @@ init_crypto(const int * const shmid)
 void
 shutdown_crypto(const int * const shmid)
 {
-  /* Destroy the keystore */
   struct key_list_t * current, * next;
+
+  /* Destroy the keystore */
   keystore.issued = keystore.expires = 0;
-  /* TODO remove temporary shared memory business */
+
+  /* TODO REMOVE, temporary shared memory solution */
   if (shmid) {
     if (shmdt(keystore.key)) {
       fprintf(stderr, "WARNING: unable to detach shared memory segment\n");
@@ -192,6 +198,7 @@ shutdown_crypto(const int * const shmid)
     free(keystore.key);
   }
 
+  /* Invalidate all the keys */
   current = keystore.next;
   while (current) {
     current->expires = current->issued;
@@ -211,18 +218,27 @@ shutdown_crypto(const int * const shmid)
 
 /*** ENCRYPTION AND DECRYPTION ***********************************************/
 
-/*! \brief An array of buffers is a buffet! */
+/*! \brief A buffet is an array of buffers, used for encryption/decryption
+ *
+ *  Inside are the members pbuffer, cbuffer, and tbuffer. For convenience,
+ *  cbuffer is an unsigned char[], and the others are char[]s. 
+ */
 struct buffet_t {
   char pbuffer[MAX_COMMAND_LENGTH], tbuffer[MAX_COMMAND_LENGTH];
   unsigned char cbuffer[MAX_COMMAND_LENGTH];
 };
 
+/*! \brief Convenience method for fetching the decrypted messages */
 inline char *
 strbuffet(struct buffet_t * buffet) {
-  buffet->tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
-  return buffet->tbuffer;
+  if (buffet) {
+    buffet->tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
+    return buffet->tbuffer;
+  }
+  return NULL;
 }
 
+/*! \brief Perform a Chinese firedrill, TODO REMOVE */
 void
 cfdbuffet(struct buffet_t * buffet)
 {
@@ -232,13 +248,20 @@ cfdbuffet(struct buffet_t * buffet)
   }
 }
 
-int
-cmpbuffet(struct buffet_t * buffet)
-{
+/*! \brief Ensure that pbuffer contains tbuffer reversed
+ *
+ *  Standard operating order:
+ *   Load message 1: ABCD
+ *   Encrypt message, transmit
+ *   Receive message 2, decrypt
+ *   Load message 1, cmpbuffet
+ *  \return BANKING_SUCCESS if message 2 is DCBA, BANKING_FAILURE if not
+ */
+inline int
+cmpbuffet(struct buffet_t * buffet) {
   int i, status = BANKING_FAILURE;
   if (buffet) {
     status = BANKING_SUCCESS;
-    /* tbuffer should contain pbuffer reversed */
     for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
       if (buffet->tbuffer[i] != buffet->pbuffer[MAX_COMMAND_LENGTH - 1 - i]) {
         status = BANKING_FAILURE;
@@ -249,10 +272,10 @@ cmpbuffet(struct buffet_t * buffet)
   return status;
 }
 
+/*! \brief Ensure that all buffers are clear, TODO secure enough? */
 inline void
 clrbuffet(struct buffet_t * buffet) {
   if (buffet) {
-    /* TODO noncify instead? */
     memset(buffet->pbuffer, '\0', MAX_COMMAND_LENGTH);
     memset(buffet->cbuffer, '\0', MAX_COMMAND_LENGTH);
     memset(buffet->tbuffer, '\0', MAX_COMMAND_LENGTH);
@@ -260,45 +283,76 @@ clrbuffet(struct buffet_t * buffet) {
 }
 
 inline void
-encrypt_command(struct buffet_t * buffet, void * key) {
-  /* gcry_error_t error_code; */
+encrypt_message(struct buffet_t * buffet, void * key) {
+  /* TODO handle gcry_error_t error_code's? */
   gcry_cipher_hd_t handle;
-
-  gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
-  gcry_cipher_setkey(handle, key, AUTH_KEY_LENGTH);
-
-  gcry_cipher_encrypt(handle, buffet->cbuffer, MAX_COMMAND_LENGTH, (unsigned char *)(buffet->pbuffer), MAX_COMMAND_LENGTH);
-
-  gcry_cipher_close(handle);
+  if (buffet && key) {
+    gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256,
+                              GCRY_CIPHER_MODE_ECB,
+                              GCRY_CIPHER_SECURE);
+    gcry_cipher_setkey(handle, key,
+                               AUTH_KEY_LENGTH);
+    gcry_cipher_encrypt(handle, buffet->cbuffer,
+                                MAX_COMMAND_LENGTH,
+                                (unsigned char *)(buffet->pbuffer),
+                                MAX_COMMAND_LENGTH);
+    gcry_cipher_close(handle);
+  }
 }
 
 inline void
-decrypt_command(struct buffet_t * buffet, void * key) {
-  /* gcry_error_t error_code; */
+decrypt_message(struct buffet_t * buffet, void * key) {
+  /* TODO handle gcry_error_t error_code's? */
   gcry_cipher_hd_t handle;
-
-  gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256, GCRY_CIPHER_MODE_ECB, GCRY_CIPHER_SECURE);
-  gcry_cipher_setkey(handle, key, AUTH_KEY_LENGTH);
-
-  gcry_cipher_decrypt(handle, (unsigned char *)(buffet->tbuffer), MAX_COMMAND_LENGTH, buffet->cbuffer, MAX_COMMAND_LENGTH);
-
-  gcry_cipher_close(handle);
+  if (buffet && key) {
+    gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256,
+                              GCRY_CIPHER_MODE_ECB,
+                              GCRY_CIPHER_SECURE);
+    gcry_cipher_setkey(handle, key,
+                               AUTH_KEY_LENGTH);
+    gcry_cipher_decrypt(handle, (unsigned char *)(buffet->tbuffer),
+                                MAX_COMMAND_LENGTH,
+                                buffet->cbuffer,
+                                MAX_COMMAND_LENGTH);
+    gcry_cipher_close(handle);
+  }
 }
 
 inline ssize_t
-put_message(struct buffet_t * buffet, int sock) {
-  /* TODO AAA feature */
+send_message(struct buffet_t * buffet, int sock) {
+  /* TODO AAA features? */
   return send(sock, buffet->cbuffer, MAX_COMMAND_LENGTH, 0);
 }
 
 inline ssize_t
-get_message(struct buffet_t * buffet, int sock) {
-  /* TODO AAA feature */
+recv_message(struct buffet_t * buffet, int sock) {
+  /* TODO AAA features? */
   return recv(sock, buffet->cbuffer, MAX_COMMAND_LENGTH, 0);
 }
 
-/*** UTILITY FUNCTIONS (INCL. CHECKSUM) **************************************/
+/*** CREDENTIALS *************************************************************/
 
+struct credential_t {
+  char username[MAX_COMMAND_LENGTH];
+  unsigned char * key;
+  size_t length;
+};
+
+inline void
+set_user(struct credential_t * credentials, char * buffer) {
+  if (credentials && buffer) {
+    credentials->length = strnlen(buffer, MAX_COMMAND_LENGTH);
+    memset(credentials->username, '\0', MAX_COMMAND_LENGTH);
+    strncpy(credentials->username, buffer, credentials->length);
+  }
+}
+
+/*** UTILITY FUNCTIONS *******************************************************/
+
+/*! \brief Print a labeled hex-formated representation of a string
+ *
+ *  Format: [label]: XX XX XX XX XX XX XX XX ([len * 8] bits)\n
+ */
 void
 fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
 {
@@ -314,6 +368,9 @@ fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
 
 /*! \brief Obfuscate a message into a buffer, filling the remainder with nonce
  *  
+ *  Given: salt_and_pepper("MESSAGE", NULL, &buffet);
+ *  Result: buffet.pbuffer = "MESSAGE" + null byte + nonce
+ *  (*) If a non-NULL second argument is given, it is XOR'd
  *  \param msg     A raw message, which will be trimmed to MAX_COMMAND_LENGTH
  *  \param salt    Either NULL or data to XOR with the message
  *  \param buffer  A buffer of size MAX_COMMAND_LENGTH (mandatory)
@@ -347,7 +404,7 @@ salt_and_pepper(char * msg, const char * salt, struct buffet_t * buffet)
   }
 }
 
-/*! \brief Produce the message digest of a banking command
+/*! \brief Produce the message digest of a banking command TODO SIMPLIFY
  *
  *  \param cmd    The command to checksum
  *  \param digest If non-NULL, check this against the hash of cmd
@@ -380,7 +437,9 @@ checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
   }
 
   /* Try to take the hash of the command and buffer it */
-  gcry_md_hash_buffer(GCRY_MD_SHA256, *buffer, (const void *)(cmd), MAX_COMMAND_LENGTH);
+  gcry_md_hash_buffer(GCRY_MD_SHA256, *buffer,
+                                      (const void *)(cmd),
+                                      MAX_COMMAND_LENGTH);
 
   /* If a digest value was given, check it */
   if (digest) {
@@ -431,6 +490,8 @@ print_keystore(FILE * fp)
   fprintf(fp, "\n");
 }
 
+/*** TESTING *****************************************************************/
+
 int
 test_crypto()
 {
@@ -452,8 +513,8 @@ test_crypto()
   print_keystore(stderr);
 
   /* encryption test */
-  encrypt_command(&buffet, key);
-  decrypt_command(&buffet, key);
+  encrypt_message(&buffet, key);
+  decrypt_message(&buffet, key);
   fprintf(stderr, "MSG: '%s'\n", msg);
   fprintx(stderr, "RAW", (unsigned char *)(msg), MAX_COMMAND_LENGTH);
   fprintx(stderr, "KEY", key, AUTH_KEY_LENGTH);
@@ -467,7 +528,7 @@ test_crypto()
   /* key revocation test */
   fprintf(stderr, "AFTER ENCRYPTION:\n");
   print_keystore(stderr);
-  if (revoke_key(key)) {
+  if (revoke_key(&key)) {
     fprintf(stderr, "WARNING: cannot revoke key\n");
   }
   fprintf(stderr, "AFTER REVOCATION:\n");
@@ -483,8 +544,9 @@ test_crypto()
   } else {
     fprintf(stderr, "INFO: checksum verified\n");
   }
-  free(md);
 
+  /* cleanup */
+  free(md);
   free(msg);
 
   return BANKING_SUCCESS;
