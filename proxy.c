@@ -67,11 +67,11 @@ handle_connection(int sock, int * conn)
   socklen_t addr_len = sizeof(remote_addr);
   assert(sock >= 0 && conn);
   if ((*conn = accept(sock, (struct sockaddr *)(&remote_addr), &addr_len)) >= 0) {
-    time(&session_data.established);
     /* Report successful connection information */
     fprintf(stderr, "INFO: tunnel established [%s:%hu]\n",
       inet_ntop(AF_INET, &remote_addr.sin_addr, addr_buffer, INET_ADDRSTRLEN),
       ntohs(remote_addr.sin_port));
+    time(&session_data.established);
     return BANKING_SUCCESS;
   }
   return BANKING_FAILURE;
@@ -120,7 +120,7 @@ main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
 
-  /* Provide a dumb echo tunnel service */
+  /* Provide a dumb echo tunnel service TODO send/recv threads */
   while (!handle_connection(session_data.ssock, &session_data.conn)) {
     session_data.count = 0;
     while (!handle_relay(&session_data, &received, &sent)) {
@@ -130,15 +130,16 @@ main(int argc, char ** argv)
         if (bytes < 0) { bytes = -bytes; }
         fprintf(stderr, "ERROR: %li byte(s) lost\n", (long)(bytes));
       }
+      fprintf(stderr, "INFO: message propagated [id: %08i]\n", session_data.count);
       #ifndef NDEBUG
       /* Report entire transmission */
-      hexdump(session_data.buffer, MAX_COMMAND_LENGTH);
+      hexdump(stderr, session_data.buffer, MAX_COMMAND_LENGTH);
       #endif
     }
     time(&session_data.terminated);
     /* Disconnect from defunct clients */
     destroy_socket(session_data.conn);
-    fprintf(stderr, "INFO: tunnel closed [%i sent in %li sec]\n",
+    fprintf(stderr, "INFO: tunnel closed [%i msg / %li sec]\n",
       session_data.count, (long)(session_data.terminated - session_data.established));
   }
 
