@@ -26,6 +26,8 @@
 
 #define INIT_COMMAND(CMD_NAME) \
   { #CMD_NAME, & CMD_NAME##_command, sizeof(#CMD_NAME) },
+#define INIT_HANDLE(CMD_NAME) \
+  { #CMD_NAME, & handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
 
 /* COMMANDS *******************************************************************/
 
@@ -59,11 +61,11 @@ int
 deposit_command(char *);
 #endif
 
-typedef int (*command)(char *);
+typedef int (*command_t)(char *);
 
 struct command_info_t {
-  char * name;
-  command function;
+  const char * name;
+  command_t function;
   size_t length;
 };
 
@@ -86,20 +88,22 @@ const struct command_info_t commands[] = {
   #ifdef USE_DEPOSIT
   INIT_COMMAND(deposit)
   #endif
+  /* A mandatory command */
   { "quit", NULL, sizeof("quit") }
 };
 
 int
-validate_command(char * cmd, command * fun, char ** args)
+validate_command(char * cmd, command_t * fun, char ** args)
 {
   int invalid;
   size_t i, len;
 
+  /* Input sanitation */
   len = strnlen(cmd, MAX_COMMAND_LENGTH);
   /* Advance cmd to the first non-space character */
-  for (i = 0; *cmd == ' ' && i < len; ++i, ++cmd);
+  for (i = 0; i < len && *cmd == ' '; ++i, ++cmd);
   /* Locate the first blank space after the command */
-  for (*args = cmd; **args != '\0' && i < len; ++i, ++*args) {
+  for (*args = cmd; i < len && **args != '\0'; ++i, ++*args) {
     /* We want to terminate here, the args follow */
     if (**args == ' ') { **args = '\0'; i = len; }
   }
@@ -120,75 +124,47 @@ validate_command(char * cmd, command * fun, char ** args)
 
 /* HANDLES *******************************************************************/
 
-/*
-struct thread_data_t;
+typedef struct thread_data_t * handle_arg_t;
 
 #ifdef HANDLE_LOGIN
 int
-handle_login_command(struct thread_data_t *);
+handle_login_command(handle_arg_t, char *);
 #endif
 
 #ifdef HANDLE_BALANCE
 int
-handle_balance_command(struct thread_data_t *);
+handle_balance_command(handle_arg_t, char *);
 #endif
 
 #ifdef HANDLE_WITHDRAW
 int
-handle_withdraw_command(struct thread_data_t *);
+handle_withdraw_command(handle_arg_t, char *);
 #endif
 
 #ifdef HANDLE_LOGOUT
 int
-handle_logout_command(struct thread_data_t *);
+handle_logout_command(handle_arg_t, char *);
 #endif
 
 #ifdef HANDLE_TRANSFER
 int
-handle_transfer_command(struct thread_data_t *);
+handle_transfer_command(handle_arg_t, char *);
 #endif
 
 #ifdef HANDLE_DEPOSIT
 int
-handle_deposit_command(struct thread_data_t *);
-#endif
-*/
-
-#ifdef HANDLE_LOGIN
-int
-handle_login_command(char *);
+handle_deposit_command(handle_arg_t, char *);
 #endif
 
-#ifdef HANDLE_BALANCE
-int
-handle_balance_command(char *);
-#endif
+typedef int (*handle_t)(handle_arg_t, char *);
 
-#ifdef HANDLE_WITHDRAW
-int
-handle_withdraw_command(char *);
-#endif
+struct handle_info_t {
+  const char * name;
+  handle_t handle;
+  size_t length;
+};
 
-#ifdef HANDLE_LOGOUT
-int
-handle_logout_command(char *);
-#endif
-
-#ifdef HANDLE_TRANSFER
-int
-handle_transfer_command(char *);
-#endif
-
-#ifdef HANDLE_DEPOSIT
-int
-handle_deposit_command(char *);
-#endif
-
-#define INIT_HANDLE(CMD_NAME) \
-  { #CMD_NAME, & handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
-
-/* TODO best way to do this? */
-const struct command_info_t handles[] = {
+const struct handle_info_t handles[] = {
   #ifdef HANDLE_LOGIN
   INIT_HANDLE(login)
   #endif
@@ -207,7 +183,31 @@ const struct command_info_t handles[] = {
   #ifdef HANDLE_DEPOSIT
   INIT_HANDLE(deposit)
   #endif
+  /* A dummy handle */
   { "ping", NULL, sizeof("ping") }
 };
+
+int
+fetch_handle(char * msg, handle_t * hdl, char ** args) {
+  int i, len;
+  /* Input sanitation */
+  len = strnlen(msg, MAX_COMMAND_LENGTH);
+  /* Advance to the first non-space */
+  for (i = 0; i < len && *msg == ' '; ++i) { ++msg; }
+  /* Locate the first blank space after the command */
+  for (*args = msg; i < len && **args != '\0'; ++i, ++*args) {
+    /* We want to terminate here, the args follow */
+    if (**args == ' ') { **args = '\0'; i = len; }
+  }
+  /* Check each of the handles */
+  for (i = 0; handles[i].handle; ++i) {
+    /* If the first part of the message has no difference, break */
+    if (!strncmp(msg, handles[i].name, handles[i].length)) {
+      break;
+    }
+  }
+  /* Non-zero return value if the handle is not valid */
+  return ((*hdl = handles[i].handle) == NULL);
+}
 
 #endif /* BANKING_COMMANDS_H */
