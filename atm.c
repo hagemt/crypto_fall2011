@@ -45,8 +45,7 @@
 /* TODO do better saving of username, w/ salting? */
 struct client_session_data_t {
   int sock;
-  char * user;
-  unsigned char * key;
+  struct credential_t credentials;
   struct buffet_t buffet;
   struct termios terminal_state;
 } session_data;
@@ -56,17 +55,17 @@ authenticated(struct client_session_data_t * session)
 {
   int status = BANKING_FAILURE;
   if (session) {
-    if (!session->key) {
-      request_key(&session->key);
+    if (!session->credentials.key) {
+      request_key(&session->credentials.key);
       status = BANKING_SUCCESS;
     }
     salt_and_pepper(AUTH_CHECK_MSG, NULL, &session->buffet);
-    encrypt_command(&session->buffet, session->key);
-    put_message(&session->buffet, session->sock);
-    get_message(&session->buffet, session->sock);
-    decrypt_command(&session->buffet, session->key);
+    encrypt_message(&session->buffet, session->credentials.key);
+    send_message(&session->buffet, session->sock);
+    recv_message(&session->buffet, session->sock);
+    decrypt_message(&session->buffet, session->credentials.key);
     if (status == BANKING_SUCCESS) {
-      revoke_key(session->key);
+      revoke_key(&session->credentials.key);
     }
     status = cmpbuffet(&session->buffet);
     clrbuffet(&session->buffet);
@@ -113,13 +112,13 @@ int
 login_command(char * args)
 {
   size_t i, len;
-  char * pin, buffer[MAX_COMMAND_LENGTH];
+  char * user, * pin, buffer[MAX_COMMAND_LENGTH];
 
   /* Input sanitation */
   len = strnlen(args, MAX_COMMAND_LENGTH);
   /* Advance to the first non-space */
   for (i = 0; *args == ' ' && i < len; ++i, ++args);
-  for (session_data.user = args; *args != '\0' && i < len; ++i, ++args) {
+  for (user = args; *args != '\0' && i < len; ++i, ++args) {
     if (*args == ' ') { *args = '\0'; i = len; }
   }
   #ifndef NDEBUG
@@ -131,24 +130,28 @@ login_command(char * args)
   /* Only non-authenticated users may login */
   if (authenticated(&session_data) == BANKING_FAILURE) {
     /* Request a key and send the message "login [username]" */
-    request_key(&session_data.key);
+    request_key(&session_data.credentials.key);
     memset(buffer, '\0', MAX_COMMAND_LENGTH);
-    snprintf(buffer, MAX_COMMAND_LENGTH, "login %s", session_data.user);
+    snprintf(buffer, MAX_COMMAND_LENGTH, "login %s", user);
     salt_and_pepper(buffer, NULL, &session_data.buffet);
-    encrypt_command(&session_data.buffet, session_data.key);
-    put_message(&session_data.buffet, session_data.sock);
+    encrypt_message(&session_data.buffet, session_data.credentials.key);
+    send_message(&session_data.buffet, session_data.sock);
     /* Fetch the PIN from the user, and send that next */
     if (acquire_credentials(&session_data.terminal_state, &pin) == BANKING_SUCCESS) {
       salt_and_pepper(pin, NULL, &session_data.buffet);
-      encrypt_command(&session_data.buffet, session_data.key);
-      put_message(&session_data.buffet, session_data.sock);
+      encrypt_message(&session_data.buffet, session_data.credentials.key);
+      send_message(&session_data.buffet, session_data.sock);
       /* Wipe the buffer TODO noncify instead? safe? */
       memset(pin, '\0', strlen(pin));
       free(pin);
+      /* Echo the server's response */
+      recv_message(&session_data.buffet, session_data.sock);
+      decrypt_message(&session_data.buffet, session_data.credentials.key);
+      printf("%s\n", strbuffet(&session_data.buffet));
     }
     /* If we are not authenticated now, there is a problem */
     if (authenticated(&session_data) == BANKING_FAILURE) {
-      revoke_key(session_data.key);
+      revoke_key(&session_data.credentials.key);
       printf("AUTHENTICATION FAILURE\n");
     }
     /* Wipe all the buffers */
@@ -175,11 +178,11 @@ balance_command(char * args)
   /* Users must first authenticate to check balances */
   if (authenticated(&session_data) == BANKING_SUCCESS) {
     salt_and_pepper("balance", NULL, &session_data.buffet);
-    encrypt_command(&session_data.buffet, session_data.key);
-    put_message(&session_data.buffet, session_data.sock);
-    get_message(&session_data.buffet, session_data.sock);
-    decrypt_command(&session_data.buffet, session_data.key);
-    printf("%s's balance is: %s\n", session_data.user, strbuffet(&session_data.buffet));
+    encrypt_message(&session_data.buffet, session_data.credentials.key);
+    send_message(&session_data.buffet, session_data.sock);
+    recv_message(&session_data.buffet, session_data.sock);
+    decrypt_message(&session_data.buffet, session_data.credentials.key);
+    printf("%s\n", strbuffet(&session_data.buffet));
     clrbuffet(&session_data.buffet);
   } else {
     printf("You must 'login' first.\n");
@@ -215,10 +218,10 @@ withdraw_command(char * args)
     memset(buffer, '\0', MAX_COMMAND_LENGTH);
     snprintf(buffer, MAX_COMMAND_LENGTH, "withdraw %li", amount);
     salt_and_pepper(buffer, NULL, &session_data.buffet);
-    encrypt_command(&session_data.buffet, session_data.key);
-    put_message(&session_data.buffet, session_data.sock);
-    get_message(&session_data.buffet, session_data.sock);
-    decrypt_command(&session_data.buffet, session_data.key);
+    encrypt_message(&session_data.buffet, session_data.credentials.key);
+    send_message(&session_data.buffet, session_data.sock);
+    recv_message(&session_data.buffet, session_data.sock);
+    decrypt_message(&session_data.buffet, session_data.credentials.key);
     printf("%s\n", strbuffet(&session_data.buffet));
     clrbuffet(&session_data.buffet);
   } else {
@@ -243,9 +246,12 @@ logout_command(char * args)
   /* Only authenticated users can logout */
   if (authenticated(&session_data) == BANKING_SUCCESS) {
     salt_and_pepper("logout", NULL, &session_data.buffet);
-    encrypt_command(&session_data.buffet, session_data.key);
-    put_message(&session_data.buffet, session_data.sock);
-    revoke_key(session_data.key);
+    encrypt_message(&session_data.buffet, session_data.credentials.key);
+    send_message(&session_data.buffet, session_data.sock);
+    recv_message(&session_data.buffet, session_data.sock);
+    decrypt_message(&session_data.buffet, session_data.credentials.key);
+    printf("%s\n", strbuffet(&session_data.buffet));
+    revoke_key(&session_data.credentials.key);
     clrbuffet(&session_data.buffet);
   } else {
     printf("You must 'login' first.\n");
@@ -292,10 +298,10 @@ transfer_command(char * args)
     memset(buffer, '\0', MAX_COMMAND_LENGTH);
     snprintf(buffer, MAX_COMMAND_LENGTH, "transfer %li %s", amount, username);
     salt_and_pepper(buffer, NULL, &session_data.buffet);
-    encrypt_command(&session_data.buffet, session_data.key);
-    put_message(&session_data.buffet, session_data.sock);
-    get_message(&session_data.buffet, session_data.sock);
-    decrypt_command(&session_data.buffet, session_data.key);
+    encrypt_message(&session_data.buffet, session_data.credentials.key);
+    send_message(&session_data.buffet, session_data.sock);
+    recv_message(&session_data.buffet, session_data.sock);
+    decrypt_message(&session_data.buffet, session_data.credentials.key);
     printf("%s\n", strbuffet(&session_data.buffet));
     clrbuffet(&session_data.buffet);
   } else {
@@ -357,11 +363,13 @@ main(int argc, char ** argv)
   }
 
   /* Teardown TODO improve on a blank encrypted message */
-  if (!session_data.key) { request_key(&session_data.key); }
+  if (!session_data.credentials.key) {
+    request_key(&session_data.credentials.key);
+  }
   clrbuffet(&session_data.buffet);
-  encrypt_command(&session_data.buffet, session_data.key);
-  put_message(&session_data.buffet, session_data.sock);
-  revoke_key(session_data.key);
+  encrypt_message(&session_data.buffet, session_data.credentials.key);
+  send_message(&session_data.buffet, session_data.sock);
+  revoke_key(&session_data.credentials.key);
 
   destroy_socket(session_data.sock);
   shutdown_crypto(old_shmid(&i));
