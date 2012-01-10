@@ -29,6 +29,7 @@
 
 struct proxy_session_data_t {
   int csock, ssock, conn, count;
+  enum mode_t { A2B, B2A } mode;
   time_t established, terminated;
   unsigned char buffer[MAX_COMMAND_LENGTH];
 } session_data;
@@ -78,14 +79,27 @@ handle_connection(int sock, int * conn)
 }
 
 inline int
-handle_relay(struct proxy_session_data_t * session, ssize_t * r, ssize_t * s) {
-  assert(session && session->buffer && r && s);
-  /* Echo a single message */
-  memset(session->buffer, '\0', MAX_COMMAND_LENGTH);
-  if ((*r = recv(session->conn,  session->buffer, MAX_COMMAND_LENGTH, 0)) > 0
-   && (*s = send(session->csock, session->buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
-    ++session_data.count;
-    return BANKING_SUCCESS;
+handle_relay(ssize_t * r, ssize_t * s) {
+  assert(r && s);
+  /* We will buffer a single message */
+  memset(session_data.buffer, '\0', MAX_COMMAND_LENGTH);
+  /* Handle an ATM to BANK communication */
+  if (session_data.mode == A2B) {
+    if ((*r = recv(session_data.conn,  session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
+     && (*s = send(session_data.csock, session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
+      ++session_data.count;
+      session_data.mode = B2A;
+      return BANKING_SUCCESS;
+    }
+  }
+  /* Handle a BANK to ATM communication */
+  if (session_data.mode == B2A) {
+    if ((*r = recv(session_data.csock, session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
+     && (*s = send(session_data.conn,  session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
+      ++session_data.count;
+      session_data.mode = A2B;
+      return BANKING_SUCCESS;
+    }
   }
   return BANKING_FAILURE;
 }
@@ -122,25 +136,34 @@ main(int argc, char ** argv)
 
   /* Provide a dumb echo tunnel service TODO send/recv threads */
   while (!handle_connection(session_data.ssock, &session_data.conn)) {
+    session_data.mode = A2B;
     session_data.count = 0;
-    while (!handle_relay(&session_data, &received, &sent)) {
+    while (!handle_relay(&received, &sent)) {
       /* Report leaky transmissions */
       if (sent != received) {
         bytes = sent - received;
         if (bytes < 0) { bytes = -bytes; }
         fprintf(stderr, "ERROR: %li byte(s) lost\n", (long)(bytes));
       }
-      fprintf(stderr, "INFO: message propagated [id: %08i]\n", session_data.count);
+      if (session_data.mode == A2B) {
+        fprintf(stderr, "INFO: server sent message [id: %08i]\n", session_data.count);
+      }
+      if (session_data.mode == B2A) {
+        fprintf(stderr, "INFO: client sent message [id: %08i]\n", session_data.count);
+      }
       #ifndef NDEBUG
       /* Report entire transmission */
       hexdump(stderr, session_data.buffer, MAX_COMMAND_LENGTH);
       #endif
     }
     time(&session_data.terminated);
-    /* Disconnect from defunct clients */
-    destroy_socket(session_data.conn);
     fprintf(stderr, "INFO: tunnel closed [%i msg / %li sec]\n",
       session_data.count, (long)(session_data.terminated - session_data.established));
+    /* Disconnect from defunct clients */
+    destroy_socket(session_data.conn);
+    /* Re-establish with the server TODO should this be necessary? */
+    destroy_socket(session_data.csock);
+    session_data.csock = init_client_socket(argv[2]);
   }
 
   /* Teardown */

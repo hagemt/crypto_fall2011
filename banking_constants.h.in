@@ -22,6 +22,7 @@
 /* AAA settings */
 #define AUTH_CHECK_MSG "Are you still there?"
 
+/* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH */
 #define AUTH_KEY_LENGTH   32 /* In bytes, so use 256-bit keys */
 #define AUTH_KEY_TIMEOUT 300 /* TTL in seconds of ephemeral keys */
 
@@ -29,18 +30,21 @@
 #define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
 #define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
 
+/* Important: BANKING_FAILURE < 0 */
 #define BANKING_SUCCESS  0
 #define BANKING_FAILURE -1
 
 #define BANKING_ADDRESS "127.0.0.1"
 
+/* 32KB of secmem stores 1024 keys */
 #define BANKING_SECMEM  0x7FFF
-#define BANKING_SHMKEY  0xDEAD
+#define BANKING_SHMKEY  0xABBA
 
 /* Numeric limits */
 #define MIN_PORT_NUM 0x0400
 #define MAX_PORT_NUM 0xFFFF
 
+/* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH*/
 #define MAX_COMMAND_LENGTH 80
 #define MAX_CONNECTIONS     5
 #define MAX_TRANSACTION 10000
