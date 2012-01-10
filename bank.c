@@ -25,6 +25,7 @@
 #include <readline/history.h>
 
 /* Thread includes */
+#define USING_PTHREADS
 #include <pthread.h>
 #include <signal.h>
 
@@ -56,7 +57,7 @@ struct thread_data_t {
 struct server_session_data_t {
   int sock;
   sqlite3 * db_conn;
-  pthread_mutex_t accept_mutex;
+  pthread_mutex_t * accept_mutex;
   struct thread_data_t thread_data[MAX_CONNECTIONS];
   struct sigaction signal_action;
   volatile int caught_signal;
@@ -163,6 +164,12 @@ handle_login_command(struct thread_data_t * datum, char * args)
   size_t i, len;
   char buffer[MAX_COMMAND_LENGTH];
 
+  /* Send back a dummy acknowledgement TODO improve */
+  cfdbuffet(&datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
+  clrbuffet(&datum->buffet);
+
   /* Receive the PIN */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
@@ -174,7 +181,7 @@ handle_login_command(struct thread_data_t * datum, char * args)
   }
 
   /* Check the buffer matches the args */
-  if (strncmp(buffer, strbuffet(&datum->buffet), len)) {
+  if (cmpbuffet(&datum->buffet, buffer, len)) {
     snprintf(buffer, MAX_COMMAND_LENGTH, "LOGIN ERROR");
   } else {
     snprintf(buffer, MAX_COMMAND_LENGTH, "Welcome, %s!", args);
@@ -245,6 +252,9 @@ handle_logout_command(struct thread_data_t * datum, char * args)
     fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
   }
   #endif
+  cfdbuffet(&datum->buffet);
+  encrypt_message(&datum->buffet, datum->credentials.key);
+  send_message(&datum->buffet, datum->sock);
 
   /* Send reply TODO actual deauthentication */
   memset(buffer, '\0', MAX_COMMAND_LENGTH);
@@ -320,7 +330,7 @@ handle_signal(int signum)
   }
 
   /* Do remaining housekeeping */
-  pthread_mutex_destroy(&session_data.accept_mutex);
+  gcry_pthread_mutex_destroy((void **)(&session_data.accept_mutex));
   destroy_socket(session_data.sock);
   /* TODO remove shared memory code */
   old_shmid(&i);
@@ -354,29 +364,31 @@ handle_interruption(int signum)
 
 /* CLIENT HANDLERS ***********************************************************/
 
+/*! \brief Handle a message stream from a client
+ */
 int
-handle_message(struct thread_data_t * datum) {
+handle_stream(struct thread_data_t * datum) {
   handle_t hdl;
   char msg[MAX_COMMAND_LENGTH], * args;
 
-  /* Start the authentication process TODO actual key exchange */
-  request_key(&datum->credentials.key);
-  /* TODO assume all communication is encrypted? */
+  /* TODO assume all communication is encrypted? yes */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
   /* The initial message is always an authentication request */
-  if (strncmp(strbuffet(&datum->buffet), AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
+  if (strncmp(datum->buffet.tbuffer, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
     #ifndef NDEBUG
     fprintf(stderr, "[thread %lu] INFO: malformed authentication message\n", datum->id);
     #endif
+    /* Respond with "mumble" */
+    gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
+    encrypt_message(&datum->buffet, datum->credentials.key);
+    send_message(&datum->buffet, datum->sock);
     return BANKING_FAILURE;
   }
-
-  /* TODO actually handle authentication request */
+  /* Start the authentication process TODO actual key exchange */
   cfdbuffet(&datum->buffet);
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
-  clrbuffet(&datum->buffet);
 
   /* Read the actual command */
   recv_message(&datum->buffet, datum->sock);
@@ -387,11 +399,11 @@ handle_message(struct thread_data_t * datum) {
   fprintf(stderr, "[thread %lu] INFO: worker received message:\n", datum->id);
   hexdump(stderr, (unsigned char *)(msg), MAX_COMMAND_LENGTH);
   #endif
+  
   /* Disconnect from any client that issues malformed commands */
   if (fetch_handle(msg, &hdl, &args)) {
     return BANKING_FAILURE;
   }
-
   /* We are signaled by failed handlers */
   datum->caught_signal = hdl(datum, args);
   return BANKING_SUCCESS;
@@ -412,16 +424,38 @@ handle_client(void * arg)
 
   /* As long as possible, grab up whatever connection is available */
   while (!session_data.caught_signal && !datum->caught_signal) {
-    pthread_mutex_lock(&session_data.accept_mutex);
+    gcry_pthread_mutex_lock((void **)(&session_data.accept_mutex));
     datum->sock = accept(session_data.sock,
                          (struct sockaddr *)(&datum->remote_addr),
                          &datum->remote_addr_len);
-    pthread_mutex_unlock(&session_data.accept_mutex);
+    gcry_pthread_mutex_unlock((void **)(&session_data.accept_mutex));
     if (datum->sock >= 0) {
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
       #endif
-      while (handle_message(datum) == BANKING_SUCCESS);
+      /* Receive message from the client */
+      recv_message(&datum->buffet, datum->sock);
+      /* Decrypt it with the default key */
+      decrypt_message(&datum->buffet, keystore.key);
+      /* Verify it is an AUTH request */
+      if (strncmp(datum->buffet.tbuffer, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
+        /* TODO is responding with nonce acceptable? */
+        gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
+        encrypt_message(&datum->buffet, keystore.key);
+        send_message(&datum->buffet, datum->sock);
+      } else {
+        /* Respond with a session key encrypted using default key */
+        request_key(&datum->credentials.key);
+        salt_and_pepper((char *)(datum->credentials.key), NULL, &datum->buffet);
+        encrypt_message(&datum->buffet, keystore.key);
+        send_message(&datum->buffet, datum->sock);
+        /* Repeatedly poll for message streams */
+        while (handle_stream(datum) == BANKING_SUCCESS);
+        /* TODO key request/revoke is not thread-safe */
+        revoke_key(&datum->credentials.key);
+      }
+      /* Cleanup (disconnect) */
+      clrbuffet(&datum->buffet);
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker disconnected from client\n", datum->id);
       #endif
@@ -473,7 +507,7 @@ main(int argc, char ** argv)
   }
 
   /* Thread initialization */
-  pthread_mutex_init(&session_data.accept_mutex, NULL);
+  gcry_pthread_mutex_init((void **)(&session_data.accept_mutex));
   /* Save the old list of blocked signals for later */
   pthread_sigmask(SIG_SETMASK, NULL, &old_signal_action.sa_mask);
   /* Worker threads inherit a signal mask that ignores everything except SIGUSRs */

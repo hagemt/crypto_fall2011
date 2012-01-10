@@ -22,13 +22,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 
+/* gcrypt includes */
 #define GCRYPT_NO_DEPRECATED
-#ifdef USING_THREADS
-#include <assert.h>
-#define GCRY_THREAD_OPTION_PTHREAD_IMPL
-#endif /* USING_THREADS */
 #include <gcrypt.h>
+#ifdef USING_PTHREADS
+GCRY_THREAD_OPTION_PTHREAD_IMPL; 
+#endif
 
 #include "banking_constants.h"
 
@@ -74,19 +75,30 @@ struct key_list_t {
 } keystore;
 
 int
-request_key(unsigned char ** key)
+attach_key(unsigned char ** key)
 {
   struct key_list_t * entry;
+  unsigned char * tmp = NULL;
 
-  /* TODO REMOVE */
-  *key = keystore.key;
-  return BANKING_SUCCESS;
+  /* Sanity check */
+  if (!key) {
+    return BANKING_FAILURE;
+  }
 
+  /* Save the address of the current key */
+  if (*key) {
+    tmp = *key;
+  }
+  
   /* Attempt to produce a new key entry */
   if ((entry = malloc(sizeof(struct key_list_t)))) {
-    /* Generate the actual key */
+    /* Allocate randomized bytes */
     if ((*key = gcry_random_bytes_secure(AUTH_KEY_LENGTH,
                                          GCRY_STRONG_RANDOM))) {
+      /* Copy AUTH_KEY_LENGTH bytes if available */
+      if (tmp) {
+        memcpy(*key, tmp, AUTH_KEY_LENGTH);
+      }
       entry->expires = time(&entry->issued) + AUTH_KEY_TIMEOUT;
       entry->key = *key;
       /* Finally, add the completed key entry */
@@ -100,13 +112,21 @@ request_key(unsigned char ** key)
   return BANKING_FAILURE;
 }
 
+inline int
+request_key(unsigned char ** key) {
+  if (key) { *key = NULL; }
+  return attach_key(key);
+}
+
 int
 revoke_key(unsigned char ** key)
 {
   struct key_list_t * entry;
 
-  /* TODO REMOVE */
-  return BANKING_SUCCESS;
+  /* Sanity check */
+  if (!key) {
+    return BANKING_FAILURE;
+  }
 
   /* Check if the keystore is valid */
   if (keystore.issued < keystore.expires) {
@@ -157,8 +177,8 @@ init_crypto(const int * const shmid)
   keystore.next = NULL;
 
   /* Load thread callbacks */
-  #ifdef USING_THREADS
-  assert(gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread));
+  #ifdef USING_PTHREADS
+  gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
   #endif
 
   /* Verify the correct version has been linked */
@@ -258,7 +278,7 @@ cfdbuffet(struct buffet_t * buffet)
  *  \return BANKING_SUCCESS if message 2 is DCBA, BANKING_FAILURE if not
  */
 inline int
-cmpbuffet(struct buffet_t * buffet) {
+chkbuffet(struct buffet_t * buffet) {
   int i, status = BANKING_FAILURE;
   if (buffet) {
     status = BANKING_SUCCESS;
@@ -270,6 +290,11 @@ cmpbuffet(struct buffet_t * buffet) {
     }
   }
   return status;
+}
+
+inline int
+cmpbuffet(struct buffet_t * buffet, char * buffer, size_t len) {
+  return strncmp(buffet->tbuffer, buffer, len);
 }
 
 /*! \brief Ensure that all buffers are clear, TODO secure enough? */

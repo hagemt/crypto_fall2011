@@ -67,7 +67,7 @@ authenticated(struct client_session_data_t * session)
     if (status == BANKING_SUCCESS) {
       revoke_key(&session->credentials.key);
     }
-    status = cmpbuffet(&session->buffet);
+    status = chkbuffet(&session->buffet);
     clrbuffet(&session->buffet);
   }
   return status;
@@ -136,6 +136,8 @@ login_command(char * args)
     salt_and_pepper(buffer, NULL, &session_data.buffet);
     encrypt_message(&session_data.buffet, session_data.credentials.key);
     send_message(&session_data.buffet, session_data.sock);
+    /* Recieve a dummy message TODO fix */
+    recv_message(&session_data.buffet, session_data.sock);
     /* Fetch the PIN from the user, and send that next */
     if (acquire_credentials(&session_data.terminal_state, &pin) == BANKING_SUCCESS) {
       salt_and_pepper(pin, NULL, &session_data.buffet);
@@ -318,7 +320,8 @@ int
 main(int argc, char ** argv)
 {
   char * in, * args, buffer[MAX_COMMAND_LENGTH];
-  command_t cmd; int i, caught_signal = 0;
+  int i, caught_signal = 0;
+  command_t cmd;
 
   /* Input sanitation */
   if (argc != 2) {
@@ -339,6 +342,27 @@ main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
 
+  /* Key initialization TODO error checking? */
+  salt_and_pepper(AUTH_CHECK_MSG, NULL, &session_data.buffet);
+  encrypt_message(&session_data.buffet, keystore.key);
+  send_message(&session_data.buffet, session_data.sock);
+  /* The first message from the server is a session key */
+  recv_message(&session_data.buffet, session_data.sock);
+  decrypt_message(&session_data.buffet, keystore.key);
+  /* Prepare a space for the credentials */
+  memset(&session_data.credentials, '\0', sizeof(struct credential_t));
+  in = malloc(AUTH_KEY_LENGTH * sizeof(unsigned char));
+  /* Copy the session key into this space */
+  memcpy(in, session_data.buffet.tbuffer, AUTH_KEY_LENGTH);
+  clrbuffet(&session_data.buffet);
+  session_data.credentials.key = (unsigned char *)(in);
+  /* Attaching the key will copy the space to secmem */
+  attach_key(&session_data.credentials.key);
+  /* Overwrite the space with nonce, then free it */
+  gcry_create_nonce(in, AUTH_KEY_LENGTH);
+  free(in);
+  /* We now have the received session key in secmem*/
+
   /* Issue an interactive prompt, terminate only on failure */
   while (!caught_signal && (in = readline(SHELL_PROMPT))) {
     /* Skip prefix whitespace */
@@ -351,8 +375,8 @@ main(int argc, char ** argv)
       buffer[MAX_COMMAND_LENGTH - 1] = '\0';
       add_history(buffer);
       /* Read in a line, then attempt to associate it with a command */
-      if (validate_command(in + i, &cmd, &args)) {
-        fprintf(stderr, "ERROR: invalid command '%s'\n", in + i);
+      if (validate_command(buffer, &cmd, &args)) {
+        fprintf(stderr, "ERROR: invalid command '%s'\n", buffer);
       } else {
         /* Set up to signal based on the command's invocation */
         caught_signal = ((cmd == NULL) || cmd(args));
@@ -362,18 +386,15 @@ main(int argc, char ** argv)
     in = NULL;
   }
 
-  /* Teardown TODO improve on a blank encrypted message */
-  if (!session_data.credentials.key) {
-    request_key(&session_data.credentials.key);
-  }
-  clrbuffet(&session_data.buffet);
+  /* Disassociate TODO put in signal handler? */
+  gcry_create_nonce(session_data.buffet.pbuffer, MAX_COMMAND_LENGTH);
   encrypt_message(&session_data.buffet, session_data.credentials.key);
   send_message(&session_data.buffet, session_data.sock);
   revoke_key(&session_data.credentials.key);
-
+  /* Teardown */
+  putchar('\n');
   destroy_socket(session_data.sock);
   shutdown_crypto(old_shmid(&i));
-  putchar('\n');
   return EXIT_SUCCESS;
 }
 
