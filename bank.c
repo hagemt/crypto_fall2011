@@ -57,7 +57,7 @@ struct thread_data_t {
 struct server_session_data_t {
   int sock;
   sqlite3 * db_conn;
-  pthread_mutex_t * accept_mutex;
+  pthread_mutex_t * accept_mutex, * keystore_mutex;
   struct thread_data_t thread_data[MAX_CONNECTIONS];
   struct sigaction signal_action;
   volatile int caught_signal;
@@ -164,37 +164,60 @@ handle_login_command(struct thread_data_t * datum, char * args)
   size_t i, len;
   char buffer[MAX_COMMAND_LENGTH];
 
-  /* Send back a dummy acknowledgement TODO improve */
-  cfdbuffet(&datum->buffet);
+  /* The login argument takes one argument */
+  #ifndef NDEBUG
+  if (*args == '\0') {
+    fprintf(stderr, "[thread %lu] WARNING: login argument empty\n", datum->id);
+  }
+  #endif
+
+  /* Modify the key using bits from the username */
+  len = strnlen(args, MAX_COMMAND_LENGTH);
+  for (i = 0; i < AUTH_KEY_LENGTH; ++i) {
+    datum->credentials.key[i] ^= args[i % len];
+  }
+  /* Turn around the message */
+  for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+  }
+  /* Echo this message with the modified key */
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
-  clrbuffet(&datum->buffet);
 
   /* Receive the PIN */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
   /* Copy the args backward TODO better auth */
-  len = strnlen(args, MAX_COMMAND_LENGTH);
   memset(buffer, '\0', MAX_COMMAND_LENGTH);
   for (i = 0; i < len; ++i) {
     buffer[i] = args[len - i - 1];
   }
 
   /* Check the buffer matches the args */
-  if (cmpbuffet(&datum->buffet, buffer, len)) {
+  if (strncmp(buffer, datum->buffet.tbuffer, len)) {
     snprintf(buffer, MAX_COMMAND_LENGTH, "LOGIN ERROR");
+    /* Remove the previously added bits */
+    for (i = 0; i < AUTH_KEY_LENGTH; ++i) {
+      datum->credentials.key[i] ^= args[i % len];
+    }
   } else {
     snprintf(buffer, MAX_COMMAND_LENGTH, "Welcome, %s!", args);
-    set_user(&datum->credentials, args);
+    /* We have now authenticated the user */
+    memset(datum->credentials.username, '\0', MAX_COMMAND_LENGTH);
+    strncpy(datum->credentials.username, args, len);
+    datum->credentials.userlength = len;
   }
   salt_and_pepper(buffer, NULL, &datum->buffet);
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
 
-  /* Catch authentication check TODO actually */
+  /* Catch authentication check */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
-  cfdbuffet(&datum->buffet);
+  /* Turn around the message */
+  for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+  }
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
 
@@ -208,22 +231,29 @@ handle_balance_command(struct thread_data_t * datum, char * args)
 {
   long int balance;
   char buffer[MAX_COMMAND_LENGTH];
+
+  /* Balance command takes no arguments */
   #ifndef NDEBUG
   if (*args != '\0') {
     fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
   }
   #endif
+
+  /* Formulate a response */
   memset(buffer, '\0', MAX_COMMAND_LENGTH);
-  if (do_lookup(session_data.db_conn, NULL,
+  /* If we have a username, try to do a lookup */
+  if (datum->credentials.userlength
+   && do_lookup(session_data.db_conn, NULL,
                 datum->credentials.username,
-                datum->credentials.length,
-                &balance)) {
-    snprintf(buffer, MAX_COMMAND_LENGTH, "BALANCE ERROR");
-  } else {
+                datum->credentials.userlength,
+                &balance) == BANKING_SUCCESS) {
     snprintf(buffer, MAX_COMMAND_LENGTH,
              "%s, your balance is $%li.",
              datum->credentials.username, balance);
+  } else {
+    snprintf(buffer, MAX_COMMAND_LENGTH, "BALANCE ERROR");
   }
+  /* Send the results */
   salt_and_pepper(buffer, NULL, &datum->buffet);
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
@@ -244,6 +274,7 @@ handle_withdraw_command(struct thread_data_t * datum, char * args)
 int
 handle_logout_command(struct thread_data_t * datum, char * args)
 {
+  int i;
   char buffer[MAX_COMMAND_LENGTH];
 
   /* Logout command takes no arguments */
@@ -252,31 +283,34 @@ handle_logout_command(struct thread_data_t * datum, char * args)
     fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
   }
   #endif
-  cfdbuffet(&datum->buffet);
-  encrypt_message(&datum->buffet, datum->credentials.key);
-  send_message(&datum->buffet, datum->sock);
 
-  /* Send reply TODO actual deauthentication */
+  /* Prepare a reply dependent on our state */
   memset(buffer, '\0', MAX_COMMAND_LENGTH);
-  if (datum->credentials.length) {
+  if (datum->credentials.userlength) {
     snprintf(buffer, MAX_COMMAND_LENGTH, "Goodbye, %s!", datum->credentials.username);
   } else {
     snprintf(buffer, MAX_COMMAND_LENGTH, "LOGOUT ERROR");
   }
   salt_and_pepper(buffer, NULL, &datum->buffet);
   encrypt_message(&datum->buffet, datum->credentials.key);
-  memset(&datum->credentials, '\0', sizeof(struct credential_t));
+  /* Clear the credential bits from the key */
+  if (datum->credentials.userlength) {
+    for (i = 0; i < AUTH_KEY_LENGTH; ++i) {
+      datum->credentials.key[i] ^= datum->credentials.username[i % datum->credentials.userlength];
+    }
+    memset(&datum->credentials.username, '\0', MAX_COMMAND_LENGTH);
+    datum->credentials.userlength = 0;
+  }
   send_message(&datum->buffet, datum->sock);
 
   /* Handle verification (should fail) */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
-  cfdbuffet(&datum->buffet);
+  for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+  }
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
-
-  /* TODO REMOVE */
-  request_key(&datum->credentials.key);
 
   return BANKING_SUCCESS;
 }
@@ -331,6 +365,7 @@ handle_signal(int signum)
 
   /* Do remaining housekeeping */
   gcry_pthread_mutex_destroy((void **)(&session_data.accept_mutex));
+  gcry_pthread_mutex_destroy((void **)(&session_data.keystore_mutex));
   destroy_socket(session_data.sock);
   /* TODO remove shared memory code */
   old_shmid(&i);
@@ -364,36 +399,39 @@ handle_interruption(int signum)
 
 /* CLIENT HANDLERS ***********************************************************/
 
-/*! \brief Handle a message stream from a client
- */
+/*! \brief Handle a message stream from a client */
 int
 handle_stream(struct thread_data_t * datum) {
+  int i;
   handle_t hdl;
   char msg[MAX_COMMAND_LENGTH], * args;
 
-  /* TODO assume all communication is encrypted? yes */
+  /* The initial message is always an authentication request */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
-  /* The initial message is always an authentication request */
   if (strncmp(datum->buffet.tbuffer, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
     #ifndef NDEBUG
     fprintf(stderr, "[thread %lu] INFO: malformed authentication message\n", datum->id);
     #endif
-    /* Respond with "mumble" */
+    /* Respond with a "mumble" (nonce) */
     gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
     encrypt_message(&datum->buffet, datum->credentials.key);
     send_message(&datum->buffet, datum->sock);
     return BANKING_FAILURE;
   }
-  /* Start the authentication process TODO actual key exchange */
-  cfdbuffet(&datum->buffet);
+  /* Turn around the buffer and toss it back */
+  for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
+    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+  }
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
+  clear_buffet(&datum->buffet);
 
   /* Read the actual command */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
-  strncpy(msg, strbuffet(&datum->buffet), MAX_COMMAND_LENGTH);
+  /* Copy the command into a buffer so more can be received */
+  strncpy(msg, datum->buffet.tbuffer, MAX_COMMAND_LENGTH);
   #ifndef NDEBUG
   /* Local echo for all received messages */
   fprintf(stderr, "[thread %lu] INFO: worker received message:\n", datum->id);
@@ -402,10 +440,16 @@ handle_stream(struct thread_data_t * datum) {
   
   /* Disconnect from any client that issues malformed commands */
   if (fetch_handle(msg, &hdl, &args)) {
+    /* Respond with a "mumble" (nonce) */
+    gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
+    encrypt_message(&datum->buffet, datum->credentials.key);
+    send_message(&datum->buffet, datum->sock);
+    clear_buffet(&datum->buffet);
     return BANKING_FAILURE;
   }
   /* We are signaled by failed handlers */
   datum->caught_signal = hdl(datum, args);
+  clear_buffet(&datum->buffet);
   return BANKING_SUCCESS;
 }
 
@@ -424,6 +468,7 @@ handle_client(void * arg)
 
   /* As long as possible, grab up whatever connection is available */
   while (!session_data.caught_signal && !datum->caught_signal) {
+    /* Ensure only one worker accepts the next client */
     gcry_pthread_mutex_lock((void **)(&session_data.accept_mutex));
     datum->sock = accept(session_data.sock,
                          (struct sockaddr *)(&datum->remote_addr),
@@ -433,32 +478,42 @@ handle_client(void * arg)
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
       #endif
-      /* Receive message from the client */
+      /* Receive a "hello" message from the client */
       recv_message(&datum->buffet, datum->sock);
       /* Decrypt it with the default key */
       decrypt_message(&datum->buffet, keystore.key);
-      /* Verify it is an AUTH request */
+      /* Verify it is an authentication request */
       if (strncmp(datum->buffet.tbuffer, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
-        /* TODO is responding with nonce acceptable? */
+        /* Respond with nonce (misdirection) */
         gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
         encrypt_message(&datum->buffet, keystore.key);
         send_message(&datum->buffet, datum->sock);
       } else {
-        /* Respond with a session key encrypted using default key */
+        /* Request a session key */
+        gcry_pthread_mutex_lock((void **)(&session_data.keystore_mutex));
+        print_keystore(stderr, "before request");
         request_key(&datum->credentials.key);
+        print_keystore(stderr, "after request");
+        gcry_pthread_mutex_unlock((void **)(&session_data.keystore_mutex));
+        /* Encrypted it using the default key */
         salt_and_pepper((char *)(datum->credentials.key), NULL, &datum->buffet);
         encrypt_message(&datum->buffet, keystore.key);
         send_message(&datum->buffet, datum->sock);
+        clear_buffet(&datum->buffet);
         /* Repeatedly poll for message streams */
         while (handle_stream(datum) == BANKING_SUCCESS);
-        /* TODO key request/revoke is not thread-safe */
+        /* Revoke the session key */
+        gcry_pthread_mutex_lock((void **)(&session_data.keystore_mutex));
+        print_keystore(stderr, "before revoke");
         revoke_key(&datum->credentials.key);
+        print_keystore(stderr, "after revoke");
+        gcry_pthread_mutex_unlock((void **)(&session_data.keystore_mutex));
       }
       /* Cleanup (disconnect) */
-      clrbuffet(&datum->buffet);
       #ifndef NDEBUG
       fprintf(stderr, "[thread %lu] INFO: worker disconnected from client\n", datum->id);
       #endif
+      clear_buffet(&datum->buffet);
       destroy_socket(datum->sock);
       datum->sock = BANKING_FAILURE;
     } else {
@@ -508,6 +563,7 @@ main(int argc, char ** argv)
 
   /* Thread initialization */
   gcry_pthread_mutex_init((void **)(&session_data.accept_mutex));
+  gcry_pthread_mutex_init((void **)(&session_data.keystore_mutex));
   /* Save the old list of blocked signals for later */
   pthread_sigmask(SIG_SETMASK, NULL, &old_signal_action.sa_mask);
   /* Worker threads inherit a signal mask that ignores everything except SIGUSRs */

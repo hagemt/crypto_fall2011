@@ -114,7 +114,10 @@ attach_key(unsigned char ** key)
 
 inline int
 request_key(unsigned char ** key) {
-  if (key) { *key = NULL; }
+  /* Key requests are just new attachments */
+  if (key) {
+    *key = NULL;
+  }
   return attach_key(key);
 }
 
@@ -147,6 +150,7 @@ revoke_key(unsigned char ** key)
       entry = entry->next;
     }
   }
+
   return BANKING_FAILURE;
 }
 
@@ -249,6 +253,7 @@ struct buffet_t {
 };
 
 /*! \brief Convenience method for fetching the decrypted messages */
+/*
 inline char *
 strbuffet(struct buffet_t * buffet) {
   if (buffet) {
@@ -257,8 +262,10 @@ strbuffet(struct buffet_t * buffet) {
   }
   return NULL;
 }
+*/
 
 /*! \brief Perform a Chinese firedrill, TODO REMOVE */
+/*
 void
 cfdbuffet(struct buffet_t * buffet)
 {
@@ -267,6 +274,7 @@ cfdbuffet(struct buffet_t * buffet)
     buffet->pbuffer[i] = buffet->tbuffer[MAX_COMMAND_LENGTH - 1 - i];
   }
 }
+*/
 
 /*! \brief Ensure that pbuffer contains tbuffer reversed
  *
@@ -276,7 +284,6 @@ cfdbuffet(struct buffet_t * buffet)
  *   Receive message 2, decrypt
  *   Load message 1, cmpbuffet
  *  \return BANKING_SUCCESS if message 2 is DCBA, BANKING_FAILURE if not
- */
 inline int
 chkbuffet(struct buffet_t * buffet) {
   int i, status = BANKING_FAILURE;
@@ -291,15 +298,18 @@ chkbuffet(struct buffet_t * buffet) {
   }
   return status;
 }
+ */
 
+/*
 inline int
 cmpbuffet(struct buffet_t * buffet, char * buffer, size_t len) {
   return strncmp(buffet->tbuffer, buffer, len);
 }
+*/
 
 /*! \brief Ensure that all buffers are clear, TODO secure enough? */
 inline void
-clrbuffet(struct buffet_t * buffet) {
+clear_buffet(struct buffet_t * buffet) {
   if (buffet) {
     memset(buffet->pbuffer, '\0', MAX_COMMAND_LENGTH);
     memset(buffet->cbuffer, '\0', MAX_COMMAND_LENGTH);
@@ -360,9 +370,10 @@ recv_message(struct buffet_t * buffet, int sock) {
 struct credential_t {
   char username[MAX_COMMAND_LENGTH];
   unsigned char * key;
-  size_t length;
+  size_t userlength;
 };
 
+/*
 inline void
 set_user(struct credential_t * credentials, char * buffer) {
   if (credentials && buffer) {
@@ -371,6 +382,7 @@ set_user(struct credential_t * credentials, char * buffer) {
     strncpy(credentials->username, buffer, credentials->length);
   }
 }
+*/
 
 /*** UTILITY FUNCTIONS *******************************************************/
 
@@ -490,12 +502,12 @@ checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
 }
 
 void
-print_keystore(FILE * fp)
+print_keystore(FILE * fp, const char * label)
 {
   struct key_list_t * current;
 
-  fprintf(fp, "KEYSTORE (SEED: '%s') [TTL: %li/%li] CREATED: %s",
-    keystore.key,
+  fprintf(fp, "KEYSTORE (%s) (SEED: '%s') [TTL: %li/%li] CREATED: %s",
+    label, keystore.key,
     (long)(keystore.expires - time(NULL)),
     (long)(keystore.expires - keystore.issued),
     ctime(&keystore.issued));
@@ -528,14 +540,12 @@ test_crypto()
   strncpy(msg, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG));
 
   /* key request test */
-  fprintf(stderr, "INTIAL STATE:\n");
-  print_keystore(stderr);
+  print_keystore(stderr, "initial state");
   if (request_key(&key)) {
     fprintf(stderr, "ERROR: cannot obtain key\n");
     return BANKING_FAILURE;
   }
-  fprintf(stderr, "AFTER REQUEST:\n");
-  print_keystore(stderr);
+  print_keystore(stderr, "after request");
 
   /* encryption test */
   encrypt_message(&buffet, key);
@@ -551,13 +561,11 @@ test_crypto()
   fprintf(stderr, "\n");
 
   /* key revocation test */
-  fprintf(stderr, "AFTER ENCRYPTION:\n");
-  print_keystore(stderr);
+  print_keystore(stderr, "after encryption");
   if (revoke_key(&key)) {
     fprintf(stderr, "WARNING: cannot revoke key\n");
   }
-  fprintf(stderr, "AFTER REVOCATION:\n");
-  print_keystore(stderr);
+  print_keystore(stderr, "after revocation");
 
   /* checksum test */
   md = NULL;
