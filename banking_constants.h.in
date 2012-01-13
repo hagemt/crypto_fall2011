@@ -60,4 +60,4 @@
 #define SQL_CMD_UPDATE_BALANCE "UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
 #define SQL_CMD_SELECT_ALL     "SELECT name, balance FROM accounts;"
 
-#endif
+#endif /* BANKING_CONSTANTS_H */

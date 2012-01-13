@@ -278,4 +278,4 @@ do_update(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
   return return_status;
 }
 
-#endif
+#endif /* DB_UTILS_H */
