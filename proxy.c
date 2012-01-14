@@ -37,7 +37,9 @@ struct proxy_session_data_t {
 void
 handle_signal(int signum)
 {
-  fprintf(stderr, "WARNING: stopping proxy service [signal %i: %s]\n", signum, strsignal(signum));
+  fprintf(stderr,
+          "WARNING: stopping proxy service [signal %i: %s]\n",
+          signum, strsignal(signum));
 
   /* Attempt to disconnect from everything */
   if (session_data.conn >= 0) {
@@ -63,15 +65,17 @@ handle_signal(int signum)
 int
 handle_connection(int sock, int * conn)
 {
-  char addr_buffer[INET_ADDRSTRLEN];
+  char addr_str[INET_ADDRSTRLEN];
   struct sockaddr_in remote_addr;
-  socklen_t addr_len = sizeof(remote_addr);
+  socklen_t remote_addr_len = sizeof(remote_addr);
   assert(sock >= 0 && conn);
-  if ((*conn = accept(sock, (struct sockaddr *)(&remote_addr), &addr_len)) >= 0) {
+
+  if ((*conn = accept(sock, (struct sockaddr *)(&remote_addr),
+                            &remote_addr_len)) >= 0) {
     /* Report successful connection information */
     fprintf(stderr, "INFO: tunnel established [%s:%hu]\n",
-      inet_ntop(AF_INET, &remote_addr.sin_addr, addr_buffer, INET_ADDRSTRLEN),
-      ntohs(remote_addr.sin_port));
+     inet_ntop(AF_INET, &remote_addr.sin_addr, addr_str, INET_ADDRSTRLEN),
+     ntohs(remote_addr.sin_port));
     time(&session_data.established);
     return BANKING_SUCCESS;
   }

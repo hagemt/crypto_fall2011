@@ -63,7 +63,7 @@ struct server_session_data_t {
   volatile int caught_signal;
 } session_data;
 
-/* PROMPT COMMANDS ***********************************************************/
+/* PROMPT COMMANDS *******************************************************/
 
 #ifdef USE_BALANCE
 int
@@ -133,17 +133,24 @@ deposit_command(char * args)
 
   /* Ensure the transaction amount is sane, TODO better solution? */
   if (amount < -MAX_TRANSACTION || amount > MAX_TRANSACTION) {
-    fprintf(stderr, "ERROR: amount (%li) exceeds maximum transaction (%i)\n", amount, MAX_TRANSACTION);
+    fprintf(stderr,
+            "ERROR: amount (%li) exceeds maximum transaction (%i)\n",
+            amount, MAX_TRANSACTION);
     return BANKING_SUCCESS;
   }
 
   /* Prepare and run actual queries */
-  if (do_lookup(session_data.db_conn, &residue, username, len, &balance)) {
+  if (do_lookup(session_data.db_conn, &residue,
+                username, len, &balance)) {
     fprintf(stderr, "ERROR: no account found for '%s'\n", username);
-  } else if (do_update(session_data.db_conn, &residue, username, len, balance + amount)) {
-    fprintf(stderr, "ERROR: unable to complete request on ('%s', %li)\n", username, balance);
+  } else if (do_update(session_data.db_conn, &residue,
+                       username, len, balance + amount)) {
+    fprintf(stderr,
+            "ERROR: unable to complete request on ('%s', %li)\n",
+            username, balance);
   } else {
-    printf("A transaction of $%li brings %s's balance from $%li to $%li\n", amount, username, balance, balance + amount);
+    printf("A transaction of $%li brings %s's balance from $%li to $%li\n",
+           amount, username, balance, balance + amount);
   }
   #ifndef NDEBUG
   if (*residue != '\0') {
@@ -155,7 +162,7 @@ deposit_command(char * args)
 }
 #endif /* USE_DEPOSIT */
 
-/* HANDLERS ******************************************************************/
+/* HANDLERS **************************************************************/
 
 #ifdef HANDLE_LOGIN
 int
@@ -167,9 +174,12 @@ handle_login_command(struct thread_data_t * datum, char * args)
   /* The login argument takes one argument */
   #ifndef NDEBUG
   if (*args == '\0') {
-    fprintf(stderr, "[thread %lu] WARNING: login argument empty\n", datum->id);
+    fprintf(stderr,
+            "[thread %lu] WARNING: login argument empty\n",
+            datum->id);
   }
   #endif
+  /* TODO verify they're an actual user of the system */
 
   /* Modify the key using bits from the username */
   len = strnlen(args, MAX_COMMAND_LENGTH);
@@ -178,7 +188,8 @@ handle_login_command(struct thread_data_t * datum, char * args)
   }
   /* Turn around the message */
   for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+    datum->buffet.pbuffer[i] =
+     datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
   }
   /* Echo this message with the modified key */
   encrypt_message(&datum->buffet, datum->credentials.key);
@@ -194,14 +205,15 @@ handle_login_command(struct thread_data_t * datum, char * args)
   }
 
   /* Check the buffer matches the args */
-  if (strncmp(buffer, datum->buffet.tbuffer, len)) {
+  if (strncmp(buffer, datum->buffet.tbuffer, len)
+   || do_lookup(session_data.db_conn, NULL, args, len, NULL)) {
     snprintf(buffer, MAX_COMMAND_LENGTH, "LOGIN ERROR");
     /* Remove the previously added bits */
     for (i = 0; i < AUTH_KEY_LENGTH; ++i) {
       datum->credentials.key[i] ^= args[i % len];
     }
   } else {
-    snprintf(buffer, MAX_COMMAND_LENGTH, "Welcome, %s!", args);
+    snprintf(buffer, MAX_COMMAND_LENGTH, "%s, %s!", AUTH_LOGIN_MSG, args);
     /* We have now authenticated the user */
     memset(datum->credentials.username, '\0', MAX_COMMAND_LENGTH);
     strncpy(datum->credentials.username, args, len);
@@ -216,7 +228,8 @@ handle_login_command(struct thread_data_t * datum, char * args)
   decrypt_message(&datum->buffet, datum->credentials.key);
   /* Turn around the message */
   for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+    datum->buffet.pbuffer[i] =
+     datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
   }
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
@@ -235,7 +248,9 @@ handle_balance_command(struct thread_data_t * datum, char * args)
   /* Balance command takes no arguments */
   #ifndef NDEBUG
   if (*args != '\0') {
-    fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
+    fprintf(stderr,
+            "[thread %lu] WARNING: ignoring '%s' (argument residue)\n",
+            datum->id, args);
   }
   #endif
 
@@ -265,7 +280,9 @@ handle_balance_command(struct thread_data_t * datum, char * args)
 int
 handle_withdraw_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] WARNING: ignoring '%s %s' (unimplemented command)\n", datum->id, "withdraw", args);
+  fprintf(stderr,
+          "[thread %lu] WARNING: ignoring '%s %s' (%s)\n",
+          datum->id, "withdraw", args, "unimplemented handler");
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_WITHDRAW */
@@ -274,20 +291,23 @@ handle_withdraw_command(struct thread_data_t * datum, char * args)
 int
 handle_logout_command(struct thread_data_t * datum, char * args)
 {
-  int i;
+  int i, len;
   char buffer[MAX_COMMAND_LENGTH];
 
   /* Logout command takes no arguments */
   #ifndef NDEBUG
   if (*args != '\0') {
-    fprintf(stderr, "[thread %lu] WARNING: ignoring '%s' (argument residue)\n", datum->id, args);
+    fprintf(stderr,
+            "[thread %lu] WARNING: ignoring '%s' (argument residue)\n",
+            datum->id, args);
   }
   #endif
 
   /* Prepare a reply dependent on our state */
   memset(buffer, '\0', MAX_COMMAND_LENGTH);
   if (datum->credentials.userlength) {
-    snprintf(buffer, MAX_COMMAND_LENGTH, "Goodbye, %s!", datum->credentials.username);
+    snprintf(buffer, MAX_COMMAND_LENGTH, "Goodbye, %s!",
+             datum->credentials.username);
   } else {
     snprintf(buffer, MAX_COMMAND_LENGTH, "LOGOUT ERROR");
   }
@@ -295,8 +315,10 @@ handle_logout_command(struct thread_data_t * datum, char * args)
   encrypt_message(&datum->buffet, datum->credentials.key);
   /* Clear the credential bits from the key */
   if (datum->credentials.userlength) {
+    len = datum->credentials.userlength;
     for (i = 0; i < AUTH_KEY_LENGTH; ++i) {
-      datum->credentials.key[i] ^= datum->credentials.username[i % datum->credentials.userlength];
+      datum->credentials.key[i] ^=
+       datum->credentials.username[i % len];
     }
     memset(&datum->credentials.username, '\0', MAX_COMMAND_LENGTH);
     datum->credentials.userlength = 0;
@@ -307,7 +329,8 @@ handle_logout_command(struct thread_data_t * datum, char * args)
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
   for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+    datum->buffet.pbuffer[i] =
+     datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
   }
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
@@ -320,20 +343,24 @@ handle_logout_command(struct thread_data_t * datum, char * args)
 int
 handle_transfer_command(struct thread_data_t * datum, char * args)
 {
-  fprintf(stderr, "[thread %lu] WARNING: ignoring '%s %s' (unimplemented command)\n", datum->id, "transfer", args);
+  fprintf(stderr,
+          "[thread %lu] WARNING: ignoring '%s %s' (%s)\n",
+          datum->id, "transfer", args, "unimplemented handler");
   return BANKING_SUCCESS;
 }
 #endif /* HANDLE_TRANSFER */
 
-/* SIGNAL HANDLERS ***********************************************************/
+/* SIGNAL HANDLERS *******************************************************/
 
 void
 handle_signal(int signum)
 {
   int i;
-  printf("\n");
+  putchar('\n');
   if (signum) {
-    fprintf(stderr, "WARNING: signal caught [code %i: %s]\n", signum, strsignal(signum));
+    fprintf(stderr,
+            "WARNING: signal caught [code %i: %s]\n",
+            signum, strsignal(signum));
   }
   /* Perform a graceful shutdown of the system */
   session_data.caught_signal = signum;
@@ -368,8 +395,7 @@ handle_signal(int signum)
   gcry_pthread_mutex_destroy((void **)(&session_data.keystore_mutex));
   destroy_socket(session_data.sock);
   /* TODO remove shared memory code */
-  old_shmid(&i);
-  shutdown_crypto(&i);
+  shutdown_crypto(old_shmid(&i));
   if (shmctl(i, IPC_RMID, NULL)) {
     fprintf(stderr, "WARNING: unable to remove shared memory segment\n");
   }
@@ -393,11 +419,13 @@ handle_interruption(int signum)
     #endif
     pthread_exit(NULL);
   } else {
-    fprintf(stderr, "WARNING: signal caught [code %i: %s]\n", signum, strsignal(signum));
+    fprintf(stderr,
+            "WARNING: worker thread caught signal [code %i: %s]\n",
+            signum, strsignal(signum));
   }
 }
 
-/* CLIENT HANDLERS ***********************************************************/
+/* CLIENT HANDLERS *******************************************************/
 
 /*! \brief Handle a message stream from a client */
 int
@@ -409,9 +437,12 @@ handle_stream(struct thread_data_t * datum) {
   /* The initial message is always an authentication request */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
-  if (strncmp(datum->buffet.tbuffer, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
+  if (strncmp(datum->buffet.tbuffer,
+              AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
     #ifndef NDEBUG
-    fprintf(stderr, "[thread %lu] INFO: malformed authentication message\n", datum->id);
+    fprintf(stderr,
+            "[thread %lu] INFO: malformed authentication message\n",
+            datum->id);
     #endif
     /* Respond with a "mumble" (nonce) */
     gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
@@ -421,11 +452,17 @@ handle_stream(struct thread_data_t * datum) {
   }
   /* Turn around the buffer and toss it back */
   for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-    datum->buffet.pbuffer[i] = datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
+    datum->buffet.pbuffer[i] =
+     datum->buffet.tbuffer[MAX_COMMAND_LENGTH - 1 - i];
   }
   encrypt_message(&datum->buffet, datum->credentials.key);
   send_message(&datum->buffet, datum->sock);
   clear_buffet(&datum->buffet);
+  #ifndef NDEBUG
+  fprintf(stderr,
+          "[thread %lu] INFO: authentication successful\n",
+          datum->id);
+  #endif
 
   /* Read the actual command */
   recv_message(&datum->buffet, datum->sock);
@@ -434,7 +471,9 @@ handle_stream(struct thread_data_t * datum) {
   strncpy(msg, datum->buffet.tbuffer, MAX_COMMAND_LENGTH);
   #ifndef NDEBUG
   /* Local echo for all received messages */
-  fprintf(stderr, "[thread %lu] INFO: worker received message:\n", datum->id);
+  fprintf(stderr,
+          "[thread %lu] INFO: worker received message:\n",
+          datum->id);
   hexdump(stderr, (unsigned char *)(msg), MAX_COMMAND_LENGTH);
   #endif
   
@@ -450,6 +489,7 @@ handle_stream(struct thread_data_t * datum) {
   /* We are signaled by failed handlers */
   datum->caught_signal = hdl(datum, args);
   clear_buffet(&datum->buffet);
+
   return BANKING_SUCCESS;
 }
 
@@ -476,14 +516,17 @@ handle_client(void * arg)
     gcry_pthread_mutex_unlock((void **)(&session_data.accept_mutex));
     if (datum->sock >= 0) {
       #ifndef NDEBUG
-      fprintf(stderr, "[thread %lu] INFO: worker connected to client\n", datum->id);
+      fprintf(stderr,
+              "[thread %lu] INFO: worker connected to client\n",
+              datum->id);
       #endif
       /* Receive a "hello" message from the client */
       recv_message(&datum->buffet, datum->sock);
       /* Decrypt it with the default key */
       decrypt_message(&datum->buffet, keystore.key);
       /* Verify it is an authentication request */
-      if (strncmp(datum->buffet.tbuffer, AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
+      if (strncmp(datum->buffet.tbuffer,
+                  AUTH_CHECK_MSG, sizeof(AUTH_CHECK_MSG))) {
         /* Respond with nonce (misdirection) */
         gcry_create_nonce(datum->buffet.pbuffer, MAX_COMMAND_LENGTH);
         encrypt_message(&datum->buffet, keystore.key);
@@ -491,12 +534,17 @@ handle_client(void * arg)
       } else {
         /* Request a session key */
         gcry_pthread_mutex_lock((void **)(&session_data.keystore_mutex));
+        #ifndef NDEBUG
         print_keystore(stderr, "before request");
+        #endif
         request_key(&datum->credentials.key);
+        #ifndef NDEBUG
         print_keystore(stderr, "after request");
+        #endif
         gcry_pthread_mutex_unlock((void **)(&session_data.keystore_mutex));
         /* Encrypted it using the default key */
-        salt_and_pepper((char *)(datum->credentials.key), NULL, &datum->buffet);
+        salt_and_pepper((char *)(datum->credentials.key), NULL,
+                        &datum->buffet);
         encrypt_message(&datum->buffet, keystore.key);
         send_message(&datum->buffet, datum->sock);
         clear_buffet(&datum->buffet);
@@ -504,20 +552,28 @@ handle_client(void * arg)
         while (handle_stream(datum) == BANKING_SUCCESS);
         /* Revoke the session key */
         gcry_pthread_mutex_lock((void **)(&session_data.keystore_mutex));
+        #ifndef NDEBUG
         print_keystore(stderr, "before revoke");
+        #endif
         revoke_key(&datum->credentials.key);
+        #ifndef NDEBUG
         print_keystore(stderr, "after revoke");
+        #endif
         gcry_pthread_mutex_unlock((void **)(&session_data.keystore_mutex));
       }
       /* Cleanup (disconnect) */
       #ifndef NDEBUG
-      fprintf(stderr, "[thread %lu] INFO: worker disconnected from client\n", datum->id);
+      fprintf(stderr,
+              "[thread %lu] INFO: worker disconnected from client\n",
+              datum->id);
       #endif
       clear_buffet(&datum->buffet);
       destroy_socket(datum->sock);
       datum->sock = BANKING_FAILURE;
     } else {
-      fprintf(stderr, "[thread %lu] ERROR: worker unable to connect\n", datum->id);
+      fprintf(stderr,
+              "[thread %lu] ERROR: worker unable to connect\n",
+              datum->id);
     }
   }
 
@@ -566,8 +622,8 @@ main(int argc, char ** argv)
   gcry_pthread_mutex_init((void **)(&session_data.keystore_mutex));
   /* Save the old list of blocked signals for later */
   pthread_sigmask(SIG_SETMASK, NULL, &old_signal_action.sa_mask);
-  /* Worker threads inherit a signal mask that ignores everything except SIGUSRs */
-  memset(&thread_signal_action, '\0', sizeof(thread_signal_action));
+  /* Worker threads inherit this mask (ignore everything except SIGUSRs) */
+  memset(&thread_signal_action, '\0', sizeof(struct sigaction));
   sigfillset(&thread_signal_action.sa_mask);
   sigdelset(&thread_signal_action.sa_mask, SIGUSR1);
   sigdelset(&thread_signal_action.sa_mask, SIGUSR2);
@@ -583,19 +639,19 @@ main(int argc, char ** argv)
     thread_datum->sock = BANKING_FAILURE;
     thread_datum->remote_addr_len = sizeof(thread_datum->remote_addr);
     thread_datum->signal_action = &thread_signal_action;
-    if (pthread_create(&thread_datum->id, NULL, &handle_client, thread_datum)) {
+    if (pthread_create(&thread_datum->id, NULL, &handle_client,
+                                                thread_datum)) {
       thread_datum->id = (pthread_t)(BANKING_FAILURE);
       fprintf(stderr, "WARNING: unable to start worker thread\n");
     }
   }
-  /* Reset the thread signal mask to the prior behavior, ignoring SIGUSRs */
+  /* Reset the signal mask to the prior behavior, and ignore SIGUSRs */
   sigaddset(&old_signal_action.sa_mask, SIGUSR1);
   sigaddset(&old_signal_action.sa_mask, SIGUSR2);
   pthread_sigmask(SIG_SETMASK, &old_signal_action.sa_mask, NULL);
 
   /* Session Signal initialization */
-  session_data.caught_signal = 0;
-  memset(&session_data.signal_action, '\0', sizeof(session_data.signal_action));
+  memset(&session_data.signal_action, '\0', sizeof(struct sigaction));
   /* The signal handler should ignore SIGTERM and SIGINT */
   sigemptyset(&session_data.signal_action.sa_mask);
   sigaddset(&session_data.signal_action.sa_mask, SIGTERM);
@@ -610,6 +666,9 @@ main(int argc, char ** argv)
   if (old_signal_action.sa_handler != SIG_IGN) {
     sigaction(SIGINT, &session_data.signal_action, NULL);
   }
+  session_data.caught_signal = 0;
+  /* TODO tab-completion for commands */
+  rl_bind_key('\t', rl_insert);
 
   /* Issue an interactive prompt, only quit on signal */
   while (!session_data.caught_signal && (in = readline(SHELL_PROMPT))) {
@@ -624,6 +683,7 @@ main(int argc, char ** argv)
       /* Catch invalid commands prior to invocation */
       if (validate_command(in, &cmd, &args)) {
         fprintf(stderr, "ERROR: invalid command '%s'\n", in);
+        rl_ding();
       } else {
         /* Hook the command's return value to this signal */
         session_data.caught_signal = ((cmd == NULL) || cmd(args));

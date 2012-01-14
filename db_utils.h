@@ -192,7 +192,7 @@ do_lookup(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
       #endif
       /* But either way, the lookup has failed */
       return_status = BANKING_FAILURE;
-    } else {
+    } else if (balance) {
       /* The lookup has successfully obtained an entry */
       *balance = sqlite3_column_int(statement, 0);
     }

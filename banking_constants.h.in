@@ -21,6 +21,7 @@
 
 /* AAA settings */
 #define AUTH_CHECK_MSG "Are you still there?"
+#define AUTH_LOGIN_MSG "Welcome"
 
 /* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH */
 #define AUTH_KEY_LENGTH   32 /* In bytes, so use 256-bit keys */
