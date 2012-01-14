@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 2.8)
 project(Plouton C)
 
 set(BANKING_VERSION_MAJOR 0)
-set(BANKING_VERSION_MINOR 3)
+set(BANKING_VERSION_MINOR 4)
 
 set(BANKING_VERSION_STRING "v${BANKING_VERSION_MAJOR}.${BANKING_VERSION_MINOR}")
 
@@ -140,3 +140,7 @@ include(CTest)
 if(BUILD_TESTING)
   set(CTEST_PROJECT_NAME ${CMAKE_PROJECT_NAME})
 endif(BUILD_TESTING)
+
+# Packaging
+
+include(CPack)
