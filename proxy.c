@@ -32,14 +32,18 @@ struct proxy_session_data_t {
   enum mode_t { A2B, B2A } mode;
   time_t established, terminated;
   unsigned char buffer[MAX_COMMAND_LENGTH];
+  struct sigaction signal_action;
+  sigset_t termination_signals;
 } session_data;
 
 void
 handle_signal(int signum)
 {
-  fprintf(stderr,
-          "WARNING: stopping proxy service [signal %i: %s]\n",
-          signum, strsignal(signum));
+  if (signum) {
+    fprintf(stderr,
+            "WARNING: stopping proxy service [signal %i: %s]\n",
+            signum, strsignal(signum));
+  }
 
   /* Attempt to disconnect from everything */
   if (session_data.conn >= 0) {
@@ -56,8 +60,10 @@ handle_signal(int signum)
   memset(session_data.buffer, '\0', MAX_COMMAND_LENGTH);
 
   /* Re-raise the proper termination signals */
-  if (signum == SIGINT || signum == SIGTERM) {
-    signal(signum, SIG_DFL);
+  if (sigismember(&session_data.termination_signals, signum)) {
+    sigemptyset(&session_data.signal_action.sa_mask);
+    session_data.signal_action.sa_handler = SIG_DFL;
+    sigaction(signum, &session_data.signal_action, NULL);
     raise(signum);
   }
 }
@@ -85,8 +91,10 @@ handle_connection(int sock, int * conn)
 inline int
 handle_relay(ssize_t * r, ssize_t * s) {
   assert(r && s);
+
   /* We will buffer a single message */
   memset(session_data.buffer, '\0', MAX_COMMAND_LENGTH);
+
   /* Handle an ATM to BANK communication */
   if (session_data.mode == A2B) {
     if ((*r = recv(session_data.conn,  session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
@@ -96,6 +104,7 @@ handle_relay(ssize_t * r, ssize_t * s) {
       return BANKING_SUCCESS;
     }
   }
+
   /* Handle a BANK to ATM communication */
   if (session_data.mode == B2A) {
     if ((*r = recv(session_data.csock, session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
@@ -105,6 +114,7 @@ handle_relay(ssize_t * r, ssize_t * s) {
       return BANKING_SUCCESS;
     }
   }
+
   return BANKING_FAILURE;
 }
 
@@ -112,6 +122,7 @@ int
 main(int argc, char ** argv)
 {
   ssize_t received, sent, bytes;
+  struct sigaction old_signal_action;
 
   /* Input sanitation */
   if (argc != 3) {
@@ -119,12 +130,20 @@ main(int argc, char ** argv)
     return EXIT_FAILURE;
   }
 
-  /* Capture SIGINT and SIGTERM, TODO sigaction? */
-  if (signal(SIGINT, &handle_signal) == SIG_IGN) {
-    signal(SIGINT, SIG_IGN);
+  /* Capture SIGINT and SIGTERM */
+  memset(&session_data.signal_action, '\0', sizeof(struct sigaction));
+  sigfillset(&session_data.signal_action.sa_mask);
+  session_data.signal_action.sa_handler = &handle_signal;
+  sigemptyset(&session_data.termination_signals);
+  sigaction(SIGINT, NULL, &old_signal_action);
+  if (old_signal_action.sa_handler != SIG_IGN) {
+    sigaction(SIGINT, &session_data.signal_action, NULL);
+    sigaddset(&session_data.termination_signals, SIGINT);
   }
-  if (signal(SIGTERM, &handle_signal) == SIG_IGN) {
-    signal(SIGTERM, SIG_IGN);
+  sigaction(SIGTERM, NULL, &old_signal_action);
+  if (old_signal_action.sa_handler != SIG_IGN) {
+    sigaction(SIGTERM, &session_data.signal_action, NULL);
+    sigaddset(&session_data.termination_signals, SIGTERM);
   }
 
   /* Socket initialization */
