@@ -37,9 +37,10 @@ void
 destroy_socket(int sock)
 {
   /* Attempt to stop communication in both directions */
-  if (shutdown(sock, 2)) {
+  if (shutdown(sock, SHUT_RDWR)) {
     fprintf(stderr, "WARNING: unable to shutdown socket\n");
   }
+  /* Release the associated resources */
   if (close(sock)) {
     fprintf(stderr, "WARNING: unable to close socket\n");
   }
