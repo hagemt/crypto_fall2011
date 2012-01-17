@@ -329,16 +329,17 @@ struct credential_t {
   size_t userlength;
 };
 
-/*
 inline void
-set_username(struct credential_t * credentials, char * buffer) {
-  if (credentials && buffer) {
+set_username(struct credential_t * credentials, char * buffer,
+                                                size_t len) {
+  if (credentials) {
+    credentials->userlength = len;
     memset(credentials->username, '\0', MAX_COMMAND_LENGTH);
-    credentials->length = strnlen(buffer, MAX_COMMAND_LENGTH);
-    strncpy(credentials->username, buffer, credentials->length);
+    if (buffer) {
+      strncpy(credentials->username, buffer, len);
+    }
   }
 }
-*/
 
 /*** UTILITY FUNCTIONS ***************************************************/
 
