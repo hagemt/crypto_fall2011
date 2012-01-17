@@ -14,7 +14,7 @@ if [ ! -x "$PROXY_EXE" ]; then
   echo "Cannot execute: $PROXY_EXE";
   exit 2;
 fi
-if [ ! -x "$ATM_EXECUTABLE" ]; then
+if [ ! -x "$ATM_EXE" ]; then
   echo "Cannot execute: $ATM_EXE";
   exit 3;
 fi
@@ -23,12 +23,12 @@ fi
 @BANKING_TERMINAL_COMMAND@ \
   --tab \
     --title="bank @BANKING_VERSION_STRING@" \
-    --command="$BANK_EXE @BANKING_SERVER_PORT@" \
+    --command="$BANK_EXE @BANKING_PORT_SERVER@" \
   --tab \
     --title="proxy @BANKING_VERSION_STRING@" \
-    --command="$PROXY_EXE @BANKING_CLIENT_PORT@ @BANKING_SERVER_PORT@" \
-  --tab
+    --command="$PROXY_EXE @BANKING_PORT_SERVER@ @BANKING_PORT_CLIENT@" \
+  --tab \
     --title="atm @BANKING_VERSION_STRING@" \
-    --command="$ATM_EXE @BANKING_CLIENT_PORT@"
+    --command="$ATM_EXE @BANKING_PORT_CLIENT@"
 exit $?
 

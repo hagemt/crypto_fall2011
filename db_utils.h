@@ -27,21 +27,6 @@
 
 #include "banking_constants.h"
 
-struct account_info_t {
-  const char * name, * pin;
-  long int balance;
-  size_t namelength, pinlength;
-};
-
-#define INIT_ACCOUNT(NAME, PIN, BALANCE) \
-  { #NAME, #PIN, BALANCE, sizeof(#NAME), sizeof(#PIN) }
-
-const struct account_info_t accounts[] = {
-  INIT_ACCOUNT(Alice, One, 100),
-  INIT_ACCOUNT(Bob,   Two,  50),
-  INIT_ACCOUNT(Eve,   Six,   0)
-};
-
 void
 destroy_db(const char * db_path, sqlite3 * db_conn)
 {
@@ -68,7 +53,7 @@ init_db(const char * db_path, sqlite3 ** db_conn)
     return_status = BANKING_FAILURE;
   }
 
-  #ifndef BLANK_DB
+  #ifdef BANKING_DB_INIT
   /* Create the table with preliminary data */
   if (return_status == BANKING_SUCCESS) {
     status = sqlite3_prepare_v2(*db_conn,
@@ -133,7 +118,7 @@ init_db(const char * db_path, sqlite3 ** db_conn)
     }
     #endif /* NDEBUG */
   }
-  #endif /* BLANK_DB */
+  #endif /* BANKING_DB_INIT */
 
   #ifndef NDEBUG
   /* Dump the initial contents of the database in debug mode */

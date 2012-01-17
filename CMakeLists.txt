@@ -21,25 +21,31 @@ cmake_minimum_required(VERSION 2.8)
 project(Plouton C)
 
 set(BANKING_VERSION_MAJOR 0)
-set(BANKING_VERSION_MINOR 4)
+set(BANKING_VERSION_MINOR 5)
 
 set(BANKING_VERSION_STRING
     "v${BANKING_VERSION_MAJOR}.${BANKING_VERSION_MINOR}")
 
-# Configuration
+IF(NOT CMAKE_BUILD_TYPE)
+  SET(CMAKE_BUILD_TYPE Debug CACHE STRING
+      "None, Debug, Release, RelWithDebInfo, or MinSizeRel" FORCE)
+ENDIF(NOT CMAKE_BUILD_TYPE)
 
+## Configuration
+
+# Configure the driver script TODO make this universal
 set(BANKING_TERMINAL_COMMAND "gnome-terminal"
     CACHE STRING "System wrapper shell")
-set(BANKING_SERVER_PORT "49152"
+set(BANKING_PORT_SERVER "49152"
     CACHE STRING "Default port for server")
-set(BANKING_CLIENT_PORT "49153"
+set(BANKING_PORT_CLIENT "49153"
     CACHE STRING "Default port for client")
 set(BANKING_EXECUTABLE_PATH "${PROJECT_BINARY_DIR}/bin"
-    CACHE STRING "Location for built binaries")
+    CACHE STRING "Location to build banking executables")
 mark_as_advanced(
   BANKING_TERMINAL_COMMAND
-  BANKING_SERVER_PORT
-  BANKING_CLIENT_PORT
+  BANKING_PORT_SERVER
+  BANKING_PORT_CLIENT
   BANKING_EXECUTABLE_PATH
 )
 configure_file(
@@ -47,25 +53,69 @@ configure_file(
   "${PROJECT_BINARY_DIR}/run_system.sh"
 )
 
+# Configure the constants (incl. PINs)
+string(RANDOM LENGTH 3 ALPHABET "0123456789" BANKING_PIN_SEED)
+# Randomize PINs in releases (and make easy for debugging)
+if(CMAKE_BUILD_TYPE STREQUAL Debug)
+  set(BANKING_PIN_ALICE "A${BANKING_PIN_SEED}")
+  set(BANKING_PIN_BOB   "B${BANKING_PIN_SEED}")
+  set(BANKING_PIN_EVE   "E${BANKING_PIN_SEED}")
+else(CMAKE_BUILD_TYPE STREQUAL Debug)
+  math(EXPR BANKING_PIN_SEED_ALICE "${BANKING_PIN_SEED} + 1")
+  math(EXPR BANKING_PIN_SEED_BOB   "${BANKING_PIN_SEED} + 2")
+  math(EXPR BANKING_PIN_SEED_EVE   "${BANKING_PIN_SEED} + 5")
+  string(RANDOM
+         LENGTH 16
+         RANDOM_SEED ${BANKING_PIN_SEED_ALICE}
+         BANKING_PIN_ALICE)
+  string(RANDOM
+         LENGTH 16
+         RANDOM_SEED ${BANKING_PIN_SEED_BOB}
+         BANKING_PIN_BOB)
+  string(RANDOM
+         LENGTH 16
+         RANDOM_SEED ${BANKING_PIN_SEED_EVE}
+         BANKING_PIN_EVE)
+endif(CMAKE_BUILD_TYPE STREQUAL Debug)
+# Force a refresh of the cache
+set(BANKING_PIN_ALICE "${BANKING_PIN_ALICE}"
+    CACHE STRING "Alice's PIN" FORCE)
+set(BANKING_PIN_BOB   "${BANKING_PIN_BOB}"
+    CACHE STRING   "Bob's PIN" FORCE)
+set(BANKING_PIN_EVE   "${BANKING_PIN_EVE}"
+    CACHE STRING   "Eve's PIN" FORCE)
+mark_as_advanced(
+  BANKING_PIN_ALICE
+  BANKING_PIN_BOB
+  BANKING_PIN_EVE
+)
+# Some useful default locations
+set(BANKING_IP_ADDR "127.0.0.1" CACHE STRING "IP address of the bank")
+if(NOT EXISTS "${PROJECT_BINARY_DIR}/db")
+  file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/db")
+endif(NOT EXISTS "${PROJECT_BINARY_DIR}/db")
+set(BANKING_DB_FILE
+    "${PROJECT_BINARY_DIR}/db/bank_accounts_${BANKING_PIN_SEED}.sqlite3"
+    CACHE STRING "Location of the bank account database" FORCE)
+# Configure and include the constants
 configure_file(
   "${PROJECT_SOURCE_DIR}/banking_constants.h.in"
   "${PROJECT_BINARY_DIR}/banking_constants.h"
 )
 include_directories("${PROJECT_BINARY_DIR}")
 
-# Options
+## Options
 
-option(BUILD_ATM   "Produce binaries for the ATM"    ON)
-option(BUILD_BANK  "Produce binaries for the bank"   ON)
-option(BUILD_PROXY "Produce binaries for the proxy"  ON)
+option(BUILD_ATM   "Produce binaries for the ATM"   ON)
+option(BUILD_BANK  "Produce binaries for the bank"  ON)
+option(BUILD_PROXY "Produce binaries for the proxy" ON)
 
-option(BLANK_DB    "Leave the bank database empty"  OFF)
-mark_as_advanced(BLANK_DB)
-if(BLANK_DB)
-  set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -D BLANK_DB")
-endif(BLANK_DB)
+option(BANKING_DB_INIT "Perform initial population of bank accounts" ON)
+if(BANKING_DB_INIT)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D BANKING_DB_INIT")
+endif(BANKING_DB_INIT)
 
-# Libraries
+## Libraries
 
 if(BUILD_ATM OR BUILD_BANK)
   find_library(READLINE_LIBRARY_PATH readline)
@@ -119,7 +169,7 @@ if(BUILD_BANK)
   endif(THREAD_LIBRARY_PATH)
 endif(BUILD_BANK)
 
-# Executables
+## Executables
 
 if(BUILD_ATM)
   add_executable(atm atm.c)
@@ -145,13 +195,11 @@ install(
   RUNTIME DESTINATION "${EXECUTABLE_OUTPUT_PATH}"
 )
 
-# Testing
+## Testing, etc.
 
 include(CTest)
 if(BUILD_TESTING)
   set(CTEST_PROJECT_NAME ${CMAKE_PROJECT_NAME})
 endif(BUILD_TESTING)
-
-# Packaging
 
 include(CPack)

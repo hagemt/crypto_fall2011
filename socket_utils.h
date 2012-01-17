@@ -80,7 +80,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
     return BANKING_FAILURE;
   }
   local_addr->sin_family = AF_INET;
-  local_addr->sin_addr.s_addr = inet_addr(BANKING_ADDRESS);
+  local_addr->sin_addr.s_addr = inet_addr(BANKING_IP_ADDR);
   local_addr->sin_port = htons((unsigned short)(port_num));
 
   /* Perform actual opening of the socket */
