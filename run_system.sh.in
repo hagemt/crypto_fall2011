@@ -1,12 +1,34 @@
 #!/usr/bin/env bash
-BANK_EXECUTABLE="@BANKING_EXECUTABLE_PATH@/bank"
-PROXY_EXECUTABLE="@BANKING_EXECUTABLE_PATH@/proxy"
-ATM_EXECUTABLE="@BANKING_EXECUTABLE_PATH@/atm"
-if [ ! -x "$BANK_EXECUTABLE"  ]; then echo "Unable to locate $BANK_EXECUTABLE";  exit 1; fi
-if [ ! -x "$PROXY_EXECUTABLE" ]; then echo "Unable to locate $PROXY_EXECUTABLE"; exit 2; fi
-if [ ! -x "$ATM_EXECUTABLE"   ]; then echo "Unable to locate $ATM_EXECUTABLE";   exit 3; fi
+
+# Direct the driver to the executables
+ BANK_EXE="@BANKING_EXECUTABLE_PATH@/bank"
+PROXY_EXE="@BANKING_EXECUTABLE_PATH@/proxy"
+  ATM_EXE="@BANKING_EXECUTABLE_PATH@/atm"
+
+# Ensure adequate permissions
+if [ ! -x "$BANK_EXE" ]; then
+  echo "Cannot execute: $BANK_EXE";
+  exit 1;
+fi
+if [ ! -x "$PROXY_EXE" ]; then
+  echo "Cannot execute: $PROXY_EXE";
+  exit 2;
+fi
+if [ ! -x "$ATM_EXECUTABLE" ]; then
+  echo "Cannot execute: $ATM_EXE";
+  exit 3;
+fi
+
+# Launch all the executables TODO setup delay?
 @BANKING_TERMINAL_COMMAND@ \
-  --tab --title="bank @BANKING_VERSION_STRING@"  --command="$BANK_EXECUTABLE  @BANKING_SERVER_PORT@"\
-  --tab --title="proxy @BANKING_VERSION_STRING@" --command="$PROXY_EXECUTABLE @BANKING_CLIENT_PORT@ @BANKING_SERVER_PORT@"\
-  --tab --title="atm @BANKING_VERSION_STRING@"   --command="$ATM_EXECUTABLE   @BANKING_CLIENT_PORT@"
+  --tab \
+    --title="bank @BANKING_VERSION_STRING@" \
+    --command="$BANK_EXE @BANKING_SERVER_PORT@" \
+  --tab \
+    --title="proxy @BANKING_VERSION_STRING@" \
+    --command="$PROXY_EXE @BANKING_CLIENT_PORT@ @BANKING_SERVER_PORT@" \
+  --tab
+    --title="atm @BANKING_VERSION_STRING@" \
+    --command="$ATM_EXE @BANKING_CLIENT_PORT@"
 exit $?
+

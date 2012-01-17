@@ -33,7 +33,7 @@ GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 #include "banking_constants.h"
 
-/* SHARED MEMORY TODO REMOVE *************************************************/
+/* SHARED MEMORY TODO REMOVE *********************************************/
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -43,9 +43,13 @@ GCRY_THREAD_OPTION_PTHREAD_IMPL;
 inline int * new_shmid(int * shmid) {
   char * shmem;
   #ifndef NDEBUG
-  fprintf(stderr, "INFO: using shared memory key: 0x%X\n", BANKING_SHMKEY);
+  fprintf(stderr,
+          "INFO: using shared memory key: 0x%X\n",
+          BANKING_SHMKEY);
   #endif
-  *shmid = shmget(BANKING_SHMKEY, sizeof(AUTH_CHECK_MSG), IPC_CREAT | 0666);
+  *shmid = shmget(BANKING_SHMKEY,
+                  sizeof(AUTH_CHECK_MSG),
+                  IPC_CREAT | 0666);
   if (*shmid != -1 && (shmem = shmat(*shmid, NULL, 0))) {
     snprintf(shmem, sizeof(AUTH_CHECK_MSG), AUTH_CHECK_MSG);
     #ifndef NDEBUG
@@ -66,7 +70,7 @@ inline int * old_shmid(int * shmid) {
   return shmid;
 }
 
-/*** KEYSTORE, ISSUING AND REVOCATION ****************************************/
+/*** KEYSTORE, ISSUING AND REVOCATION ************************************/
 
 struct key_list_t {
   time_t issued, expires;
@@ -108,6 +112,7 @@ attach_key(unsigned char ** key)
     }
     /* Otherwise, forget it */
     free(entry);
+    *key = tmp;
   }
   return BANKING_FAILURE;
 }
@@ -138,7 +143,8 @@ revoke_key(unsigned char ** key)
       /* Check only valid keys */
       if (entry->issued < entry->expires) {
         /* Check if the key matches */
-        if (!strncmp((char *)(entry->key), (char *)(*key), AUTH_KEY_LENGTH)) {
+        if (!strncmp((char *)(entry->key),
+                     (char *)(      *key), AUTH_KEY_LENGTH)) {
           /* If so, force it to expire and purge */
           entry->expires = entry->issued;
           gcry_create_nonce(entry->key, AUTH_KEY_LENGTH);
@@ -154,24 +160,27 @@ revoke_key(unsigned char ** key)
   return BANKING_FAILURE;
 }
 
-/*** INITIALIZATION AND TERMINATION ******************************************/
+/*** INITIALIZATION AND TERMINATION **************************************/
 
 /* \brief TODO REPLACE
- * If shmsp is NULL, do not use shared memory.
- * Otherwise, access it. Put the keystore here if one does not already exist.
+ * If shmsp is NULL, do not use shared memory. Otherwise, access it.
+ * Put the keystore's seed here if one does not already exist.
  */
 int
 init_crypto(const int * const shmid)
 {
   /* Reset the keystore */
-  keystore.expires = time(&keystore.issued) + AUTH_KEY_TIMEOUT * AUTH_KEY_TIMEOUT;
+  keystore.expires = time(&keystore.issued) +
+                     AUTH_KEY_TIMEOUT * AUTH_KEY_TIMEOUT;
   keystore.key = (unsigned char *)(-1);
 
   /* TODO REMOVE, temporary shared memory solution */
   if (shmid) {
     keystore.key = (unsigned char *)(shmat(*shmid, NULL, SHM_RDONLY));
     #ifndef NDEBUG
-    fprintf(stderr, "INFO: shared memory segment attached at %p\n", keystore.key);
+    fprintf(stderr,
+            "INFO: shared memory segment attached at %p\n",
+            keystore.key);
     #endif
   }
   if (keystore.key == (unsigned char *)(-1)) {
@@ -240,7 +249,7 @@ shutdown_crypto(const int * const shmid)
   gcry_control(GCRYCTL_TERM_SECMEM);
 }
 
-/*** ENCRYPTION AND DECRYPTION ***********************************************/
+/*** ENCRYPTION AND DECRYPTION *******************************************/
 
 /*! \brief A buffet is an array of buffers, used for encryption/decryption
  *
@@ -252,62 +261,7 @@ struct buffet_t {
   unsigned char cbuffer[MAX_COMMAND_LENGTH];
 };
 
-/*! \brief Convenience method for fetching the decrypted messages */
-/*
-inline char *
-strbuffet(struct buffet_t * buffet) {
-  if (buffet) {
-    buffet->tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
-    return buffet->tbuffer;
-  }
-  return NULL;
-}
-*/
-
-/*! \brief Perform a Chinese firedrill, TODO REMOVE */
-/*
-void
-cfdbuffet(struct buffet_t * buffet)
-{
-  int i;
-  for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-    buffet->pbuffer[i] = buffet->tbuffer[MAX_COMMAND_LENGTH - 1 - i];
-  }
-}
-*/
-
-/*! \brief Ensure that pbuffer contains tbuffer reversed
- *
- *  Standard operating order:
- *   Load message 1: ABCD
- *   Encrypt message, transmit
- *   Receive message 2, decrypt
- *   Load message 1, cmpbuffet
- *  \return BANKING_SUCCESS if message 2 is DCBA, BANKING_FAILURE if not
-inline int
-chkbuffet(struct buffet_t * buffet) {
-  int i, status = BANKING_FAILURE;
-  if (buffet) {
-    status = BANKING_SUCCESS;
-    for (i = 0; i < MAX_COMMAND_LENGTH; ++i) {
-      if (buffet->tbuffer[i] != buffet->pbuffer[MAX_COMMAND_LENGTH - 1 - i]) {
-        status = BANKING_FAILURE;
-        break;
-      }
-    }
-  }
-  return status;
-}
- */
-
-/*
-inline int
-cmpbuffet(struct buffet_t * buffet, char * buffer, size_t len) {
-  return strncmp(buffet->tbuffer, buffer, len);
-}
-*/
-
-/*! \brief Ensure that all buffers are clear, TODO secure enough? */
+/*! \brief Ensure that all buffers are clear */
 inline void
 clear_buffet(struct buffet_t * buffet) {
   if (buffet) {
@@ -321,6 +275,7 @@ inline void
 encrypt_message(struct buffet_t * buffet, void * key) {
   /* TODO handle gcry_error_t error_code's? */
   gcry_cipher_hd_t handle;
+
   if (buffet && key) {
     gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256,
                               GCRY_CIPHER_MODE_ECB,
@@ -339,6 +294,7 @@ inline void
 decrypt_message(struct buffet_t * buffet, void * key) {
   /* TODO handle gcry_error_t error_code's? */
   gcry_cipher_hd_t handle;
+
   if (buffet && key) {
     gcry_cipher_open(&handle, GCRY_CIPHER_SERPENT256,
                               GCRY_CIPHER_MODE_ECB,
@@ -356,16 +312,16 @@ decrypt_message(struct buffet_t * buffet, void * key) {
 inline ssize_t
 send_message(struct buffet_t * buffet, int sock) {
   /* TODO AAA features? */
-  return send(sock, buffet->cbuffer, MAX_COMMAND_LENGTH, 0);
+  return write(sock, buffet->cbuffer, MAX_COMMAND_LENGTH);
 }
 
 inline ssize_t
 recv_message(struct buffet_t * buffet, int sock) {
   /* TODO AAA features? */
-  return recv(sock, buffet->cbuffer, MAX_COMMAND_LENGTH, 0);
+  return read(sock, buffet->cbuffer, MAX_COMMAND_LENGTH);
 }
 
-/*** CREDENTIALS *************************************************************/
+/*** CREDENTIALS *********************************************************/
 
 struct credential_t {
   char username[MAX_COMMAND_LENGTH];
@@ -375,16 +331,16 @@ struct credential_t {
 
 /*
 inline void
-set_user(struct credential_t * credentials, char * buffer) {
+set_username(struct credential_t * credentials, char * buffer) {
   if (credentials && buffer) {
-    credentials->length = strnlen(buffer, MAX_COMMAND_LENGTH);
     memset(credentials->username, '\0', MAX_COMMAND_LENGTH);
+    credentials->length = strnlen(buffer, MAX_COMMAND_LENGTH);
     strncpy(credentials->username, buffer, credentials->length);
   }
 }
 */
 
-/*** UTILITY FUNCTIONS *******************************************************/
+/*** UTILITY FUNCTIONS ***************************************************/
 
 /*! \brief Print a labeled hex-formated representation of a string
  *
@@ -396,19 +352,21 @@ fprintx(FILE * fp, const char * label, unsigned char * c, size_t len)
   size_t i;
   fprintf(fp, "%s: ", label);
   for (i = 0; i < len; ++i) {
-    if (i && i * 2 % MAX_COMMAND_LENGTH == 0) { fprintf(stderr, "\n     "); }
-    /* TODO remove this line ^ it's only temporary */
+    /* TODO account for longer lines more neatly: */
+    if (i && i * 2 % MAX_COMMAND_LENGTH == 0) {
+      fprintf(stderr, "\n     ");
+    }
     fprintf(fp, "%X%X ", (c[i] & 0xF0) >> 4, (c[i] & 0x0F));
   }
   fprintf(fp, "(%u bits)\n", (unsigned)(len * 8));
 }
 
-/*! \brief Obfuscate a message into a buffer, filling the remainder with nonce
+/*! \brief Obfuscate a message, filling the remainder with nonce
  *  
  *  Given: salt_and_pepper("MESSAGE", NULL, &buffet);
  *  Result: buffet.pbuffer = "MESSAGE" + null byte + nonce
  *  (*) If a non-NULL second argument is given, it is XOR'd
- *  \param msg     A raw message, which will be trimmed to MAX_COMMAND_LENGTH
+ *  \param msg     A raw message (will be trimmed to MAX_COMMAND_LENGTH)
  *  \param salt    Either NULL or data to XOR with the message
  *  \param buffer  A buffer of size MAX_COMMAND_LENGTH (mandatory)
  */
@@ -527,8 +485,7 @@ print_keystore(FILE * fp, const char * label)
   fprintf(fp, "\n");
 }
 
-/*** TESTING *****************************************************************/
-
+#ifdef ENABLE_TESTING
 int
 test_crypto()
 {
@@ -584,5 +541,6 @@ test_crypto()
 
   return BANKING_SUCCESS;
 }
+#endif /* ENABLE_TESTING */
 
 #endif /* CRYPTO_UTILS_H */

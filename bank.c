@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <unistd.h>
+
 /* Readline includes */
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -86,7 +88,9 @@ balance_command(char * args)
   residue = (const char *)(args);
   #ifndef NDEBUG
   if (*residue != '\0') {
-    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
+    fprintf(stderr,
+            "WARNING: ignoring '%s' (argument residue)\n",
+            residue);
   }
   #endif
 
@@ -127,7 +131,9 @@ deposit_command(char * args)
   amount = strtol(args, (char **)(&residue), 10);
   #ifndef NDEBUG
   if (*residue != '\0') {
-    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
+    fprintf(stderr,
+            "WARNING: ignoring '%s' (argument residue)\n",
+            residue);
   }
   #endif
 
@@ -202,7 +208,7 @@ handle_login_command(struct thread_data_t * datum, char * args)
   /* Receive the PIN */
   recv_message(&datum->buffet, datum->sock);
   decrypt_message(&datum->buffet, datum->credentials.key);
-  /* Copy the args backward TODO better auth */
+  /* Copy the args backward TODO better auth, use pin as salt */
   memset(buffer, '\0', MAX_COMMAND_LENGTH);
   for (i = 0; i < len; ++i) {
     buffer[i] = args[len - i - 1];
@@ -486,7 +492,7 @@ handle_signal(int signum)
   if (shmctl(i, IPC_RMID, NULL)) {
     fprintf(stderr, "WARNING: unable to remove shared memory segment\n");
   }
-  destroy_db(NULL, session_data.db_conn);
+  destroy_db(BANKING_DB_FILE, session_data.db_conn);
 
   /* Re-raise proper signals */
   if (signum == SIGINT || signum == SIGTERM) {
@@ -690,7 +696,7 @@ main(int argc, char ** argv)
   }
 
   /* Database initialization */
-  if (init_db(":memory:", &session_data.db_conn)) {
+  if (init_db(BANKING_DB_FILE, &session_data.db_conn)) {
     fprintf(stderr, "FATAL: unable to connect to database\n");
     shutdown_crypto(old_shmid(&i));
     return EXIT_FAILURE;
@@ -699,7 +705,7 @@ main(int argc, char ** argv)
   /* Socket initialization */
   if ((session_data.sock = init_server_socket(argv[1])) < 0) {
     fprintf(stderr, "FATAL: unable to start server\n");
-    destroy_db(NULL, session_data.db_conn);
+    destroy_db(BANKING_DB_FILE, session_data.db_conn);
     shutdown_crypto(old_shmid(&i));
     return EXIT_FAILURE;
   }

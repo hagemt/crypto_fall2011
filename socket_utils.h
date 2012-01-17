@@ -46,7 +46,7 @@ destroy_socket(int sock)
   }
 }
 
-/*** SOCKET CREATION *********************************************************/
+/*** SOCKET CREATION *****************************************************/
 
 int
 create_socket(const char * port, struct sockaddr_in * local_addr)
@@ -59,17 +59,24 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   port_num = strtol(port, &residue, 10);
   #ifndef NDEBUG
   if (residue == NULL || *residue != '\0') {
-    fprintf(stderr, "WARNING: ignoring '%s' (argument residue)\n", residue);
+    fprintf(stderr,
+            "WARNING: ignoring '%s' (argument residue)\n",
+            residue);
   }
   printf("INFO: will attempt to use port %li\n", port_num);
   /* TODO look more closely at overflow
-   * printf("sizeof(local_addr->sin_port) = %lu\n", sizeof(local_addr->sin_port));
-   * printf("sizeof((unsigned short)port_num) = %lu\n", sizeof((unsigned short)port_num));
-   * printf("sizeof(htons((unsigned short)port_num)) = %lu\n", sizeof(htons((unsigned short)port_num)));
+   * fprintf(stderr, "sizeof(local_addr->sin_port) = %lu\n",
+   *                  sizeof(local_addr->sin_port));
+   * fprintf(stderr, "sizeof((unsigned short)port_num) = %lu\n",
+   *                  sizeof((unsigned short)port_num));
+   * fprintf(stderr, "sizeof(htons((unsigned short)port_num)) = %lu\n",
+   *                  sizeof(htons((unsigned short)port_num)));
    */
   #endif
   if (port_num < MIN_PORT_NUM || port_num > MAX_PORT_NUM) {
-    fprintf(stderr, "ERROR: port '%s' out of range [%i, %i]\n", port, MIN_PORT_NUM, MAX_PORT_NUM);
+    fprintf(stderr,
+            "ERROR: port '%s' out of range [%i, %i]\n",
+            port, MIN_PORT_NUM, MAX_PORT_NUM);
     return BANKING_FAILURE;
   }
   local_addr->sin_family = AF_INET;
@@ -81,6 +88,7 @@ create_socket(const char * port, struct sockaddr_in * local_addr)
   if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
     fprintf(stderr, "ERROR: unable to open socket\n");
   }
+
   return sock;
 }
 
@@ -104,8 +112,10 @@ init_client_socket(const char * port)
   #ifndef NDEBUG
   printf("INFO: connected to port %hu\n", ntohs(local_addr.sin_port));
   /* TODO look more closely at overflow
-   * fprintf(stderr, "sizeof(local_addr.sin_port) = %lu\n", sizeof(local_addr.sin_port));
-   * fprintf(stderr, "sizeof(ntohs(local_addr.sin_port)) = %lu\n", sizeof(ntohs(local_addr.sin_port)));
+   * fprintf(stderr, "sizeof(local_addr.sin_port) = %lu\n",
+   *                  sizeof(local_addr.sin_port));
+   * fprintf(stderr, "sizeof(ntohs(local_addr.sin_port)) = %lu\n",
+   *                  sizeof(ntohs(local_addr.sin_port)));
    */
   #endif
 
@@ -147,7 +157,7 @@ init_server_socket(const char * port)
   return sock;
 }
 
-/*** UTILITIES ****************************************************************/
+/*** UTILITIES ***********************************************************/
 
 inline void
 hexdump(FILE * fp, unsigned char * buffer, size_t len) {

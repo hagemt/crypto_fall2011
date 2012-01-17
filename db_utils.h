@@ -20,23 +20,26 @@
 #define DB_UTILS_H
 
 #include <stdio.h>
+#include <unistd.h>
+/* TODO ^ this is only needed for unlink, remove it? */
 
 #include "sqlite3.h"
 
 #include "banking_constants.h"
 
 struct account_info_t {
-  const char * name;
+  const char * name, * pin;
   long int balance;
-  size_t length;
+  size_t namelength, pinlength;
 };
 
-#define INIT_ACCOUNT(NAME, BALANCE) { #NAME, BALANCE, sizeof(#NAME) }
+#define INIT_ACCOUNT(NAME, PIN, BALANCE) \
+  { #NAME, #PIN, BALANCE, sizeof(#NAME), sizeof(#PIN) }
 
 const struct account_info_t accounts[] = {
-  INIT_ACCOUNT(Alice, 100),
-  INIT_ACCOUNT(Bob,    50),
-  INIT_ACCOUNT(Eve,     0)
+  INIT_ACCOUNT(Alice, One, 100),
+  INIT_ACCOUNT(Bob,   Two,  50),
+  INIT_ACCOUNT(Eve,   Six,   0)
 };
 
 void
@@ -45,7 +48,7 @@ destroy_db(const char * db_path, sqlite3 * db_conn)
   if (sqlite3_close(db_conn) != SQLITE_OK) {
     fprintf(stderr, "ERROR: unable to close database\n");
   }
-  if (db_path && remove(db_path)) {
+  if (db_path && unlink(db_path)) {
     fprintf(stderr, "WARNING: unable to delete database\n");
   }
 }
@@ -65,6 +68,7 @@ init_db(const char * db_path, sqlite3 ** db_conn)
     return_status = BANKING_FAILURE;
   }
 
+  #ifndef BLANK_DB
   /* Create the table with preliminary data */
   if (return_status == BANKING_SUCCESS) {
     status = sqlite3_prepare_v2(*db_conn,
@@ -74,15 +78,19 @@ init_db(const char * db_path, sqlite3 ** db_conn)
                                 &residue);
     if (status != SQLITE_OK
         || (status = sqlite3_step(statement)) != SQLITE_DONE) {
-      fprintf(stderr, "ERROR: unable to create accounts table [code %i]\n", status);
+      fprintf(stderr,
+              "ERROR: unable to create accounts table [code %i]\n",
+              status);
       return_status = BANKING_FAILURE;
     }
     status = sqlite3_finalize(statement);
     #ifndef NDEBUG
     if (status != SQLITE_OK) {
-      fprintf(stderr, "WARNING: unable to finalize create statement [code %i]\n", status);
+      fprintf(stderr,
+              "WARNING: unable to finalize create statement [code %i]\n",
+              status);
     }
-    #endif
+    #endif /* NDEBUG */
   }
   if (return_status == BANKING_SUCCESS) {
     /* Prepare the insert statement */
@@ -93,18 +101,25 @@ init_db(const char * db_path, sqlite3 ** db_conn)
                                 &residue);
     if (status == SQLITE_OK) {
       /* Fill in the statement with each bit of account info */
-      for (i = 0; i < sizeof(accounts) / sizeof(struct account_info_t); ++i) {
-        /* Individual error status is too granular, use a general indicator */
+      for (i = 0; i < sizeof(accounts) /
+                      sizeof(struct account_info_t); ++i) {
+        /* Individual error status is too granular, indicate generally */
         status = (sqlite3_bind_text(statement, 1,
                                     accounts[i].name,
-                                    accounts[i].length,
+                                    accounts[i].namelength,
                                     SQLITE_STATIC) == SQLITE_OK) &&
-                 (sqlite3_bind_int (statement, 2,
+                 (sqlite3_bind_text(statement, 2,
+                                    accounts[i].pin,
+                                    accounts[i].pinlength,
+                                    SQLITE_STATIC) == SQLITE_OK) &&
+                 (sqlite3_bind_int (statement, 3,
                                     accounts[i].balance) == SQLITE_OK) &&
                  (sqlite3_step(statement) == SQLITE_DONE) &&
                  (sqlite3_reset(statement) == SQLITE_OK);
         if (!status) {
-          fprintf(stderr, "WARNING: unable to populate account for '%s'\n", accounts[i].name);
+          fprintf(stderr,
+                  "WARNING: unable to populate account info for '%s'\n",
+                  accounts[i].name);
         }
       }
     }
@@ -112,10 +127,13 @@ init_db(const char * db_path, sqlite3 ** db_conn)
     status = sqlite3_finalize(statement);
     #ifndef NDEBUG
     if (status != SQLITE_OK) {
-      fprintf(stderr, "WARNING: unable to finalize insert statement [code %i]\n", status);
+      fprintf(stderr,
+              "WARNING: unable to finalize insert statement [code %i]\n",
+              status);
     }
-    #endif
+    #endif /* NDEBUG */
   }
+  #endif /* BLANK_DB */
 
   #ifndef NDEBUG
   /* Dump the initial contents of the database in debug mode */
@@ -126,18 +144,23 @@ init_db(const char * db_path, sqlite3 ** db_conn)
                                 &statement,
                                 &residue);
     if (status == SQLITE_OK) {
-      fprintf(stderr, "INFO:\tName\tBalance\t(initial database)\n");
+      fprintf(stderr, "INFO:\tName\tPIN\tBalance\t(initial database)\n");
       while (sqlite3_step(statement) == SQLITE_ROW) {
-        fprintf(stderr, "\t%s\t%i\n", sqlite3_column_text(statement, 0),
-                                      sqlite3_column_int (statement, 1));
+        fprintf(stderr,
+                "\t%s\t%s\t%i\n",
+                sqlite3_column_text(statement, 0),
+                sqlite3_column_text(statement, 1),
+                sqlite3_column_int (statement, 2));
       }
     }
     status = sqlite3_finalize(statement);
     if (status != SQLITE_OK) {
-      fprintf(stderr, "WARNING: unable to finalize select statement [code %i]\n", status);
+      fprintf(stderr,
+              "WARNING: unable to finalize select statement [code %i]\n",
+              status);
     }
   }
-  #endif
+  #endif /* NDEBUG */
 
   if (return_status != BANKING_SUCCESS) {
     destroy_db(db_path, *db_conn);
@@ -148,7 +171,84 @@ init_db(const char * db_path, sqlite3 ** db_conn)
 }
 
 int
-do_lookup(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len, long int * balance)
+do_check(sqlite3 * db_conn, const char ** residue,
+         char * name, size_t name_len,
+         char * pin,  size_t  pin_len)
+{
+  sqlite3_stmt * statement;
+  int status, return_status;
+
+  return_status = BANKING_SUCCESS;
+
+  /* Setup the system, which ensures cleanup runs */
+  status = sqlite3_prepare_v2(db_conn,
+                              SQL_CMD_LOOKUP_PIN,
+                              sizeof(SQL_CMD_LOOKUP_PIN),
+                              &statement,
+                              residue);
+  if (status != SQLITE_OK) {
+    #ifndef NDEBUG
+    fprintf(stderr,
+            "ERROR: unable to prepare lookup statement [code %i]\n",
+            status);
+    #endif
+    return_status = BANKING_FAILURE;
+  }
+
+  /* Attempt to fill in the name provided */
+  if (return_status == BANKING_SUCCESS) {
+    status = sqlite3_bind_text(statement, 1, name,
+                                             name_len, SQLITE_STATIC);
+    if (status != SQLITE_OK) {
+      #ifndef NDEBUG
+      fprintf(stderr,
+              "ERROR: unable to bind lookup parameters [code %i]\n",
+              status);
+      #endif
+      return_status = BANKING_FAILURE;
+    }
+  }
+
+  /* Provided we have been successful thus far */
+  if (return_status == BANKING_SUCCESS) {
+    /* Attempt to recieve a row */
+    status = sqlite3_step(statement);
+    if (status != SQLITE_ROW) {
+      #ifndef NDEBUG
+      /* If not, non-terminal commands are errors */
+      if (status != SQLITE_DONE) {
+        fprintf(stderr,
+                "ERROR: unable to complete lookup command [code %i]\n",
+                status);
+      }
+      #endif
+      /* But either way, the lookup has failed */
+      return_status = BANKING_FAILURE;
+    } else if (pin) {
+      /* The lookup has successfully obtained an entry */
+      return_status = strncmp(pin,
+                              (char *)(sqlite3_column_text(statement, 0)),
+                              pin_len);
+      /* The return_status will be non-zero if the pin matches */
+    }
+  }
+
+  /* Always cleanup the statement */
+  status = sqlite3_finalize(statement);
+  #ifndef NDEBUG
+  if (status != SQLITE_OK) {
+    fprintf(stderr,
+            "WARNING: unable to finalize update statement [code %i]\n",
+            status);
+  }
+  #endif
+
+  return return_status;
+}
+
+int
+do_lookup(sqlite3 * db_conn, const char ** residue,
+          char * name, size_t name_len, long int * balance)
 {
   sqlite3_stmt * statement;
   int status, return_status;
@@ -163,17 +263,22 @@ do_lookup(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
                               residue);
   if (status != SQLITE_OK) {
     #ifndef NDEBUG
-    fprintf(stderr, "ERROR: unable to prepare lookup statement [code %i]\n", status);
+    fprintf(stderr,
+            "ERROR: unable to prepare lookup statement [code %i]\n",
+            status);
     #endif
     return_status = BANKING_FAILURE;
   }
 
   /* Attempt to fill in the name provided */
   if (return_status == BANKING_SUCCESS) {
-    status = sqlite3_bind_text(statement, 1, name, name_len, SQLITE_STATIC);
+    status = sqlite3_bind_text(statement, 1, name,
+                                             name_len, SQLITE_STATIC);
     if (status != SQLITE_OK) {
       #ifndef NDEBUG
-      fprintf(stderr, "ERROR: unable to bind lookup parameters [code %i]\n", status);
+      fprintf(stderr,
+              "ERROR: unable to bind lookup parameters [code %i]\n",
+              status);
       #endif
       return_status = BANKING_FAILURE;
     }
@@ -187,7 +292,9 @@ do_lookup(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
       #ifndef NDEBUG
       /* If not, non-terminal commands are errors */
       if (status != SQLITE_DONE) {
-        fprintf(stderr, "ERROR: unable to complete lookup command [code %i]\n", status);
+        fprintf(stderr,
+                "ERROR: unable to complete lookup command [code %i]\n",
+                status);
       }
       #endif
       /* But either way, the lookup has failed */
@@ -202,7 +309,9 @@ do_lookup(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
   status = sqlite3_finalize(statement);
   #ifndef NDEBUG
   if (status != SQLITE_OK) {
-    fprintf(stderr, "WARNING: unable to finalize update statement [code %i]\n", status);
+    fprintf(stderr,
+            "WARNING: unable to finalize update statement [code %i]\n",
+            status);
   }
   #endif
 
@@ -210,11 +319,13 @@ do_lookup(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
 }
 
 int
-do_update(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len, long int new_balance)
+do_update(sqlite3 * db_conn, const char ** residue,
+          char * name, size_t name_len, long int new_balance)
 {
   sqlite3_stmt * statement;
   int status, return_status;
 
+  /* Checking an update will demand a lookup */
   long int lookup_balance;
   const char * lookup_residue;
   
@@ -229,16 +340,23 @@ do_update(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
                               residue);
   if (status != SQLITE_OK) {
     #ifndef NDEBUG
-    fprintf(stderr, "ERROR: unable to prepare update statement [code %i]\n", status);
+    fprintf(stderr,
+            "ERROR: unable to prepare update statement [code %i]\n",
+            status);
     #endif
     return_status = BANKING_FAILURE;
   }
 
   if (return_status == BANKING_SUCCESS
-      && (   (status = sqlite3_bind_int (statement, 1, new_balance)) != SQLITE_OK
-          || (status = sqlite3_bind_text(statement, 2, name, name_len, SQLITE_STATIC)) != SQLITE_OK)) {
+      && (   (status = sqlite3_bind_int (statement, 1,
+                                         new_balance)) != SQLITE_OK
+          || (status = sqlite3_bind_text(statement, 2,
+                                         name, name_len,
+                                         SQLITE_STATIC)) != SQLITE_OK)) {
     #ifndef NDEBUG
-    fprintf(stderr, "ERROR: unable to bind update parameters [code %i]\n", status);
+    fprintf(stderr,
+            "ERROR: unable to bind update parameters [code %i]\n",
+            status);
     #endif
     return_status = BANKING_FAILURE;
   }
@@ -247,7 +365,9 @@ do_update(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
     status = sqlite3_step(statement);
     if (status != SQLITE_DONE) {
       #ifndef NDEBUG
-      fprintf(stderr, "ERROR: unable to complete update command [code %i]\n", status);
+      fprintf(stderr,
+              "ERROR: unable to complete update command [code %i]\n",
+              status);
       #endif
       return_status = BANKING_FAILURE;
     }
@@ -256,24 +376,33 @@ do_update(sqlite3 * db_conn, const char ** residue, char * name, size_t name_len
   status = sqlite3_finalize(statement);
   #ifndef NDEBUG
   if (status != SQLITE_OK) {
-    fprintf(stderr, "WARNING: unable to finalize update statement [code %i]\n", status);
+    fprintf(stderr,
+            "WARNING: unable to finalize update statement [code %i]\n",
+            status);
   }
   #endif
 
   #ifndef NDEBUG
   /* Do a quick sanity check */
   if (return_status == BANKING_SUCCESS
-      && ((status = do_lookup(db_conn, &lookup_residue, name, name_len, &lookup_balance))
+      && (   (status = do_lookup(db_conn, &lookup_residue,
+                                 name, name_len, &lookup_balance))
           || lookup_balance != new_balance)) {
-    fprintf(stderr, "WARNING: update failed sanity check [code %i]\n", status);
-    if (!status) {
-      fprintf(stderr, "WARNING: fetched balance [%li] does not match expected value [%li]\n", lookup_balance, new_balance);
+    fprintf(stderr,
+            "WARNING: update failed sanity check [code %i]\n",
+            status);
+    if (status == SQLITE_OK) {
+      fprintf(stderr,
+              "WARNING: balance [%li] does not match expected [%li]\n",
+              lookup_balance, new_balance);
     }
   }
   if (lookup_residue && *lookup_residue != '\0') {
-    fprintf(stderr, "WARNING: ignoring extraneous '%s' (query residue)\n", lookup_residue);
+    fprintf(stderr,
+            "WARNING: ignoring extraneous '%s' (query residue)\n",
+            lookup_residue);
   }
-  #endif
+  #endif /* NDEBUG */
 
   return return_status;
 }

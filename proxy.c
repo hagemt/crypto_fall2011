@@ -97,8 +97,10 @@ handle_relay(ssize_t * r, ssize_t * s) {
 
   /* Handle an ATM to BANK communication */
   if (session_data.mode == A2B) {
-    if ((*r = recv(session_data.conn,  session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
-     && (*s = send(session_data.csock, session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
+    if ((*r = recv(session_data.conn,
+                   session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
+     && (*s = send(session_data.csock,
+                   session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
       ++session_data.count;
       session_data.mode = B2A;
       return BANKING_SUCCESS;
@@ -107,8 +109,10 @@ handle_relay(ssize_t * r, ssize_t * s) {
 
   /* Handle a BANK to ATM communication */
   if (session_data.mode == B2A) {
-    if ((*r = recv(session_data.csock, session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
-     && (*s = send(session_data.conn,  session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
+    if ((*r = recv(session_data.csock,
+                   session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0
+     && (*s = send(session_data.conn,
+                   session_data.buffer, MAX_COMMAND_LENGTH, 0)) > 0) {
       ++session_data.count;
       session_data.mode = A2B;
       return BANKING_SUCCESS;
@@ -168,11 +172,16 @@ main(int argc, char ** argv)
         if (bytes < 0) { bytes = -bytes; }
         fprintf(stderr, "ERROR: %li byte(s) lost\n", (long)(bytes));
       }
+      /* NOTE: modality is swapped after relay */
       if (session_data.mode == A2B) {
-        fprintf(stderr, "INFO: server sent message [id: %08i]\n", session_data.count);
+        fprintf(stderr,
+                "INFO: server sent message [id: %08i]\n",
+                session_data.count);
       }
       if (session_data.mode == B2A) {
-        fprintf(stderr, "INFO: client sent message [id: %08i]\n", session_data.count);
+        fprintf(stderr,
+                "INFO: client sent message [id: %08i]\n",
+                session_data.count);
       }
       #ifndef NDEBUG
       /* Report entire transmission */
@@ -181,7 +190,8 @@ main(int argc, char ** argv)
     }
     time(&session_data.terminated);
     fprintf(stderr, "INFO: tunnel closed [%i msg / %li sec]\n",
-      session_data.count, (long)(session_data.terminated - session_data.established));
+      session_data.count,
+      (long)(session_data.terminated - session_data.established));
     /* Disconnect from defunct clients */
     destroy_socket(session_data.conn);
     /* Re-establish with the server TODO should this be necessary? */
@@ -193,3 +203,4 @@ main(int argc, char ** argv)
   handle_signal(0);
   return EXIT_SUCCESS;
 }
+

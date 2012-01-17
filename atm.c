@@ -199,7 +199,7 @@ login_command(char * args)
       session_data.credentials.userlength = len;
     }
 
-    /* If we are not authenticated now, there is a problem TODO bomb out? */
+    /* If we are not authenticated now, there's a problem TODO bomb out? */
     if (authenticated(&session_data) == BANKING_FAILURE) {
       fprintf(stderr, "ERROR: LOGIN AUTHENTICATION FAILURE\n");
       /* Remove the user bits from the key */

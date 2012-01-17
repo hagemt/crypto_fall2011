@@ -36,6 +36,7 @@
 #define BANKING_FAILURE -1
 
 #define BANKING_ADDRESS "127.0.0.1"
+#define BANKING_DB_FILE "test_db.sqlite3"
 
 /* 32KB of secmem stores 1024 keys */
 #define BANKING_SECMEM  0x7FFF
@@ -54,11 +55,18 @@
 #define SHELL_PROMPT "[banking] $ "
 #define PIN_PROMPT   "Enter PIN: "
 
-/* Static SQL query strings, fillable at question marks */
-#define SQL_CMD_CREATE_TABLE   "CREATE TABLE accounts(name, balance INTEGER);"
-#define SQL_CMD_INSERT_ACCOUNT "INSERT INTO accounts VALUES($name, $balance);"
-#define SQL_CMD_LOOKUP_BALANCE "SELECT balance FROM accounts WHERE name LIKE $name;"
-#define SQL_CMD_UPDATE_BALANCE "UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
-#define SQL_CMD_SELECT_ALL     "SELECT name, balance FROM accounts;"
+/* Static SQL query strings, fillable at $variables */
+#define SQL_CMD_CREATE_TABLE   \
+  "CREATE TABLE accounts(name, pin, balance INTEGER);"
+#define SQL_CMD_INSERT_ACCOUNT \
+  "INSERT INTO accounts VALUES($name, $pin, $balance);"
+#define SQL_CMD_LOOKUP_BALANCE \
+  "SELECT balance FROM accounts WHERE name LIKE $name;"
+#define SQL_CMD_LOOKUP_PIN     \
+  "SELECT pin FROM accounts WHERE name LIKE $name;"
+#define SQL_CMD_UPDATE_BALANCE \
+  "UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
+#define SQL_CMD_SELECT_ALL     \
+  "SELECT name, pin, balance FROM accounts;"
 
 #endif /* BANKING_CONSTANTS_H */

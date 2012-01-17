@@ -23,14 +23,19 @@ project(Plouton C)
 set(BANKING_VERSION_MAJOR 0)
 set(BANKING_VERSION_MINOR 4)
 
-set(BANKING_VERSION_STRING "v${BANKING_VERSION_MAJOR}.${BANKING_VERSION_MINOR}")
+set(BANKING_VERSION_STRING
+    "v${BANKING_VERSION_MAJOR}.${BANKING_VERSION_MINOR}")
 
 # Configuration
 
-set(BANKING_TERMINAL_COMMAND "gnome-terminal" CACHE STRING "System wrapper shell")
-set(BANKING_SERVER_PORT "49152" CACHE STRING "Default port for server")
-set(BANKING_CLIENT_PORT "49153" CACHE STRING "Default port for client")
-set(BANKING_EXECUTABLE_PATH "${PROJECT_BINARY_DIR}/bin" CACHE STRING "Location for built binaries")
+set(BANKING_TERMINAL_COMMAND "gnome-terminal"
+    CACHE STRING "System wrapper shell")
+set(BANKING_SERVER_PORT "49152"
+    CACHE STRING "Default port for server")
+set(BANKING_CLIENT_PORT "49153"
+    CACHE STRING "Default port for client")
+set(BANKING_EXECUTABLE_PATH "${PROJECT_BINARY_DIR}/bin"
+    CACHE STRING "Location for built binaries")
 mark_as_advanced(
   BANKING_TERMINAL_COMMAND
   BANKING_SERVER_PORT
@@ -50,9 +55,15 @@ include_directories("${PROJECT_BINARY_DIR}")
 
 # Options
 
-option(BUILD_ATM "Produce binaries for the ATM" ON)
-option(BUILD_BANK "Produce binaries for the bank" ON)
-option(BUILD_PROXY "Produce binaries for the proxy" ON)
+option(BUILD_ATM   "Produce binaries for the ATM"    ON)
+option(BUILD_BANK  "Produce binaries for the bank"   ON)
+option(BUILD_PROXY "Produce binaries for the proxy"  ON)
+
+option(BLANK_DB    "Leave the bank database empty"  OFF)
+mark_as_advanced(BLANK_DB)
+if(BLANK_DB)
+  set(CMAKE_BUILD_FLAGS "${CMAKE_BUILD_FLAGS} -D BLANK_DB")
+endif(BLANK_DB)
 
 # Libraries
 

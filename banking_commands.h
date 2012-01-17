@@ -29,7 +29,7 @@
 #define INIT_HANDLE(CMD_NAME) \
   { #CMD_NAME, & handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
 
-/* COMMANDS *******************************************************************/
+/* COMMANDS **************************************************************/
 
 #ifdef USE_LOGIN
 int
@@ -122,7 +122,7 @@ validate_command(char * cmd, command_t * fun, char ** args)
   return invalid && strncmp(commands[i].name, cmd, commands[i].length);
 }
 
-/* HANDLES *******************************************************************/
+/* HANDLES ***************************************************************/
 
 typedef struct thread_data_t * handle_arg_t;
 
