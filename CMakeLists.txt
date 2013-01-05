@@ -57,6 +57,14 @@ set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BUILD_DIR}/bin")
 
 ## Configuration (pre-build triggers)
 
+# Configure the pkgconfig script
+configure_file("libplouton.pc.in" "libplouton.pc")
+install(
+	FILES "${CMAKE_BINARY_DIR}/libplouton.pc"
+	DESTINATION lib/pkgconfig
+	COMPONENTS "Development"
+)
+
 # Configure the driver script TODO make universal
 set(BANKING_PORT_SERVER "49152"
 	CACHE STRING "Default port for server")
@@ -69,8 +77,8 @@ mark_as_advanced(FORCE
 	BANKING_EXECUTABLE_PATH
 )
 configure_file(
-	"${PROJECT_SOURCE_DIR}/run_system.sh.in"
-	"${PROJECT_BINARY_DIR}/run_system.sh"
+	"${PROJECT_SOURCE_DIR}/gnome.sh.in"
+	"${PROJECT_BINARY_DIR}/gnome.sh"
 	@ONLY
 )
 
@@ -151,6 +159,7 @@ find_library(DB_LIBRARY_PATH sqlite3 REQUIRED)
 find_library(THREAD_LIBRARY_PATH pthread REQUIRED)
 
 # FIXME: build everything
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 add_subdirectory(libplouton)
 add_subdirectory(utilities)
 add_subdirectory(ui)
