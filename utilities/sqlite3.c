@@ -16,16 +16,11 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef DB_UTILS_H
-#define DB_UTILS_H
-
 #include <stdio.h>
 #include <unistd.h>
 /* TODO ^ this is only needed for unlink, remove it? */
 
-#include "sqlite3.h"
-
-#include "banking_constants.h"
+#include "libplouton/db.h"
 
 void
 destroy_db(const char * db_path, sqlite3 * db_conn)
@@ -313,7 +308,7 @@ do_update(sqlite3 * db_conn, const char ** residue,
   /* Checking an update will demand a lookup */
   long int lookup_balance;
   const char * lookup_residue;
-  
+
   lookup_balance = -1;
   lookup_residue = NULL;
   return_status = BANKING_SUCCESS;
@@ -391,5 +386,3 @@ do_update(sqlite3 * db_conn, const char ** residue,
 
   return return_status;
 }
-
-#endif /* DB_UTILS_H */

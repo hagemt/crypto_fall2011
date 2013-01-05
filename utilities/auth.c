@@ -16,6 +16,8 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "libplouton/crypt.h"
+
 #ifndef CRYPT_UTILS_H
 #define CRYPT_UTILS_H
 
@@ -93,7 +95,7 @@ attach_key(unsigned char ** key)
   if (*key) {
     tmp = *key;
   }
-  
+
   /* Attempt to produce a new key entry */
   if ((entry = malloc(sizeof(struct key_list_t)))) {
     /* Allocate randomized bytes */
