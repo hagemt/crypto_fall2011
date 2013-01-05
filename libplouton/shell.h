@@ -19,195 +19,118 @@
 #ifndef BANKING_COMMANDS_H
 #define BANKING_COMMANDS_H
 
-#include <assert.h>
-#include <string.h>
+#include "types.h"
 
-#include "banking_constants.h"
+int fetch_command(char *, commant_t *, pos_t *);
+int fetch_handler(char *, handler_t *, pos_t *);
 
-#define INIT_COMMAND(CMD_NAME) \
-  { #CMD_NAME, & CMD_NAME##_command, sizeof(#CMD_NAME) },
-#define INIT_HANDLE(CMD_NAME) \
-  { #CMD_NAME, & handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
-
-/* COMMANDS **************************************************************/
+/* Command stubs */
 
 #ifdef USE_LOGIN
-int
-login_command(char *);
+int login_command(char *);
 #endif
 
 #ifdef USE_BALANCE
-int
-balance_command(char *);
+int balance_command(char *);
 #endif
 
 #ifdef USE_WITHDRAW
-int
-withdraw_command(char *);
+int withdraw_command(char *);
 #endif
 
 #ifdef USE_LOGOUT
-int
-logout_command(char *);
+int logout_command(char *);
 #endif
 
 #ifdef USE_TRANSFER
-int
-transfer_command(char *);
+int transfer_command(char *);
 #endif
 
 #ifdef USE_DEPOSIT
-int
-deposit_command(char *);
+int deposit_command(char *);
 #endif
 
-typedef int (*command_t)(char *);
+/* Handler stubs */
 
-struct command_info_t {
-  const char * name;
-  command_t function;
-  size_t length;
-};
+#ifdef HANDLE_LOGIN
+int handle_login_command(handle_arg_t, char *);
+#endif
 
-const struct command_info_t commands[] = {
+#ifdef HANDLE_BALANCE
+int handle_balance_command(handle_arg_t, char *);
+#endif
+
+#ifdef HANDLE_WITHDRAW
+int handle_withdraw_command(handle_arg_t, char *);
+#endif
+
+#ifdef HANDLE_LOGOUT
+int handle_logout_command(handle_arg_t, char *);
+#endif
+
+#ifdef HANDLE_TRANSFER
+int handle_transfer_command(handle_arg_t, char *);
+#endif
+
+#ifdef HANDLE_DEPOSIT
+int handle_deposit_command(handle_arg_t, char *);
+#endif
+
+/* Generator macros */
+
+#define COMMAND_INFO(CMD_NAME) \
+	{ #CMD_NAME, &CMD_NAME##_command, sizeof(#CMD_NAME) },
+
+#define HANDLER_INFO(CMD_NAME) \
+	{ #CMD_NAME, &handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
+
+/* HOWTO: add any strings you'd like to be commands/handlers below
+ * TODO: separate these into source, or should configure per-executable? */
+
+const command_info_t commands[] = {
   #ifdef USE_LOGIN
-  INIT_COMMAND(login)
+  COMMAND_INFO(login)
   #endif
   #ifdef USE_BALANCE
-  INIT_COMMAND(balance)
+  COMMAND_INFO(balance)
   #endif
   #ifdef USE_WITHDRAW
-  INIT_COMMAND(withdraw)
+  COMMAND_INFO(withdraw)
   #endif
   #ifdef USE_LOGOUT
-  INIT_COMMAND(logout)
+  COMMAND_INFO(logout)
   #endif
   #ifdef USE_TRANSFER
-  INIT_COMMAND(transfer)
+  COMMAND_INFO(transfer)
   #endif
   #ifdef USE_DEPOSIT
-  INIT_COMMAND(deposit)
+  COMMAND_INFO(deposit)
   #endif
   /* A mandatory command */
   { "quit", NULL, sizeof("quit") }
 };
 
-int
-validate_command(char * cmd, command_t * fun, char ** args)
-{
-  int invalid;
-  size_t i, len;
-
-  /* Input sanitation */
-  len = strnlen(cmd, MAX_COMMAND_LENGTH);
-  /* Advance cmd to the first non-space character */
-  for (i = 0; i < len && *cmd == ' '; ++i, ++cmd);
-  /* Locate the first blank space after the command */
-  for (*args = cmd; i < len && **args != '\0'; ++i, ++*args) {
-    /* We want to terminate here, the args follow */
-    if (**args == ' ') { **args = '\0'; i = len; }
-  }
-
-  /* Interate through all known commands with valid functions */
-  for (i = 0; commands[i].function;) {
-    assert(commands[i].length <= MAX_COMMAND_LENGTH);
-    /* If we find a match, break immediately; otherwise, continue */
-    invalid = strncmp(commands[i].name, cmd, commands[i].length);
-    if (invalid) { ++i; } else { break; }
-  }
-  /* The function is valid, or may be NULL for the final command */
-  *fun = commands[i].function;
-
-  /* Non-zero return value iff invalid and not final command */
-  return invalid && strncmp(commands[i].name, cmd, commands[i].length);
-}
-
-/* HANDLES ***************************************************************/
-
-typedef struct thread_data_t * handle_arg_t;
-
-#ifdef HANDLE_LOGIN
-int
-handle_login_command(handle_arg_t, char *);
-#endif
-
-#ifdef HANDLE_BALANCE
-int
-handle_balance_command(handle_arg_t, char *);
-#endif
-
-#ifdef HANDLE_WITHDRAW
-int
-handle_withdraw_command(handle_arg_t, char *);
-#endif
-
-#ifdef HANDLE_LOGOUT
-int
-handle_logout_command(handle_arg_t, char *);
-#endif
-
-#ifdef HANDLE_TRANSFER
-int
-handle_transfer_command(handle_arg_t, char *);
-#endif
-
-#ifdef HANDLE_DEPOSIT
-int
-handle_deposit_command(handle_arg_t, char *);
-#endif
-
-typedef int (*handle_t)(handle_arg_t, char *);
-
-struct handle_info_t {
-  const char * name;
-  handle_t handle;
-  size_t length;
-};
-
-const struct handle_info_t handles[] = {
+const handler_info_t handlers[] = {
   #ifdef HANDLE_LOGIN
-  INIT_HANDLE(login)
+  HANDLER_INFO(login)
   #endif
   #ifdef HANDLE_BALANCE
-  INIT_HANDLE(balance)
+  HANDLER_INFO(balance)
   #endif
   #ifdef HANDLE_WITHDRAW
-  INIT_HANDLE(withdraw)
+  HANDLER_INFO(withdraw)
   #endif
   #ifdef HANDLE_LOGOUT
-  INIT_HANDLE(logout)
+  HANDLER_INFO(logout)
   #endif
   #ifdef HANDLE_TRANSFER
-  INIT_HANDLE(transfer)
+  HANDLER_INFO(transfer)
   #endif
   #ifdef HANDLE_DEPOSIT
-  INIT_HANDLE(deposit)
+  HANDLER_INFO(deposit)
   #endif
-  /* A dummy handle */
+  /* A dummy handler */
   { "ping", NULL, sizeof("ping") }
 };
-
-int
-fetch_handle(char * msg, handle_t * hdl, char ** args) {
-  int i, len;
-  /* Input sanitation */
-  len = strnlen(msg, MAX_COMMAND_LENGTH);
-  /* Advance to the first non-space */
-  for (i = 0; i < len && *msg == ' '; ++i) { ++msg; }
-  /* Locate the first blank space after the command */
-  for (*args = msg; i < len && **args != '\0'; ++i, ++*args) {
-    /* We want to terminate here, the args follow */
-    if (**args == ' ') { **args = '\0'; i = len; }
-  }
-  /* Check each of the handles */
-  for (i = 0; handles[i].handle; ++i) {
-    /* If the first part of the message has no difference, break */
-    if (!strncmp(msg, handles[i].name, handles[i].length)) {
-      break;
-    }
-  }
-  /* Non-zero return value if the handle is not valid */
-  return ((*hdl = handles[i].handle) == NULL);
-}
 
 #endif /* BANKING_COMMANDS_H */

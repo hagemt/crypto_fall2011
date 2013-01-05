@@ -17,72 +17,87 @@
  */
 
 /* TODO Cmake-ify some more of these */
-#ifndef BANKING_CONSTANTS_H
-#define BANKING_CONSTANTS_H
+#ifndef LIBPLOUTON_H
+#define LIBPLOUTON_H
 
-/* AAA settings */
-#define AUTH_CHECK_MSG "Are you still there?"
-#define AUTH_LOGIN_MSG "Welcome"
+/*
+ * \brief Message section
+ */
 
-/* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH */
-#define AUTH_KEY_LENGTH   32 /* In bytes, so use 256-bit keys */
-#define AUTH_KEY_TIMEOUT 300 /* TTL in seconds of session keys */
+/* AAA messages */
+#define BANKING_MSG_AUTH_CHECK "Are you still there?"
+#define BANKING_MSG_AUTH_LOGIN "Welcome"
 
-/* Misc. banking constants */
-#define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
-#define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
+/* Prompt messages */
+#define BANKING_MSG_PROMPT_SHELL "[banking] $ "
+#define BANKING_MSG_PROMPT_PIN   "Enter PIN: "
 
-/* Important: BANKING_FAILURE < 0 */
+/*
+ * \brief Numeric section
+ */
+
+/* Important: BANKING_FAILURE < 0 FIXME bad constraint */
 #define BANKING_SUCCESS  0
 #define BANKING_FAILURE -1
 
-#define BANKING_IP_ADDR "@BANKING_IP_ADDR@"
-#define BANKING_DB_FILE "@BANKING_DB_FILE@"
-
-/* 32KB of secmem stores 1024 keys */
-#define BANKING_SECMEM 0x7FFF
-#define BANKING_SHMKEY 0xABBA
-
-/* Numeric limits */
-#define MIN_PORT_NUM 0x0400 /*  1,024 */
-#define MAX_PORT_NUM 0xFFFF /* 65,535 */
-
 /* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH*/
-#define MAX_COMMAND_LENGTH 80
-#define MAX_CONNECTIONS     5
-#define MAX_TRANSACTION 10000
+#define BANKING_MAX_COMMAND_LENGTH 80
+#define BANKING_MAX_CONNECTIONS     5
+#define BANKING_MAX_TRANSACTION 10000
 
-/* Prompt strings */
-#define SHELL_PROMPT "[banking] $ "
-#define PIN_PROMPT   "Enter PIN: "
+#define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
+#define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
+
+/* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH */
+#define BANKING_AUTH_KEY_LENGTH   32 /* In bytes, so use 256-bit keys */
+#define BANKING_AUTH_KEY_TIMEOUT 300 /* TTL in seconds of session keys */
+#define BANKING_AUTH_SECMEM   0x7FFF /* 32KB of secmem stores 1024 keys */
+#define BANKING_AUTH_SHMKEY   0xABBA /* "You are a dancing queen" */
+
+/* Numeric port limits */
+#define BANKING_PORT_MIN 0x0400 /*  1,024 */
+#define BANKING_PORT_MAX 0xFFFF /* 65,535 */
+
+/* Not strictly numeric, but w/e */
+#define BANKING_ADDR_IPv4 "@BANKING_ADDR_IPV4@"
+#define BANKING_ADDR_IPv6 "@BANKING_ADDR_IPV6@"
+
+/*
+ * \brief Database section
+ */
+#define BANKING_DB_TYPE   "sqlite3"
+#define BANKING_DB_FILE   "@BANKING_DB_FILE@"
 
 /* Static SQL query strings, fillable at $variables */
-#define SQL_CMD_CREATE_TABLE   \
-  "CREATE TABLE accounts(name, pin, balance INTEGER);"
-#define SQL_CMD_INSERT_ACCOUNT \
-  "INSERT INTO accounts VALUES($name, $pin, $balance);"
-#define SQL_CMD_LOOKUP_BALANCE \
-  "SELECT balance FROM accounts WHERE name LIKE $name;"
-#define SQL_CMD_LOOKUP_PIN     \
-  "SELECT pin FROM accounts WHERE name LIKE $name;"
-#define SQL_CMD_UPDATE_BALANCE \
-  "UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
-#define SQL_CMD_SELECT_ALL     \
-  "SELECT name, pin, balance FROM accounts;"
+#define SQL_ACCOUNT_CREATE_TABLE \
+	"CREATE TABLE accounts(name, pin, balance INTEGER);"
+#define SQL_ACCOUNT_INSERT \
+	"INSERT INTO accounts VALUES($name, $pin, $balance);"
+#define SQL_ACCOUNT_SELECT_ALL \
+	"SELECT name, pin, balance FROM accounts;"
+#define SQL_ACCOUNT_SELECT_BALANCE \
+	"SELECT balance FROM accounts WHERE name LIKE $name;"
+#define SQL_ACCOUNT_SELECT_PIN \
+	"SELECT pin FROM accounts WHERE name LIKE $name;"
+#define SQL_ACCOUNT_UPDATE_BALANCE \
+	"UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
 
-#define INIT_ACCOUNT(NAME, PIN, BALANCE) \
-  { #NAME, #PIN, BALANCE, sizeof(#NAME), sizeof(#PIN) }
+/* TODO move to source file? */
 
-struct account_info_t {
-  const char * name, * pin;
-  long int balance;
-  size_t namelength, pinlength;
+#include "libplouton/types.h"
+
+#define ACCOUNT_INFO(NAME, PIN, BALANCE) \
+	{ { #NAME, sizeof(#NAME) }, { #PIN, sizeof(#PIN) }, BALANCE }
+
+const account_info_t bank_accounts[] = {
+	ACCOUNT_INFO(Alice, @BANKING_PIN_ALICE@, 100),
+	ACCOUNT_INFO(Bob,   @BANKING_PIN_BOB@,   50),
+	ACCOUNT_INFO(Eve,   @BANKING_PIN_EVE@,   0)
 };
 
-const struct account_info_t accounts[] = {
-  INIT_ACCOUNT(Alice, @BANKING_PIN_ALICE@, 100),
-  INIT_ACCOUNT(Bob,   @BANKING_PIN_BOB@,  50),
-  INIT_ACCOUNT(Eve,   @BANKING_PIN_EVE@,   0)
-};
+#include "libplouton/crypto.h"
+#include "libplouton/db.h"
+#include "libplouton/shell.h"
+#include "libplouton/socket.h"
 
-#endif /* BANKING_CONSTANTS_H */
+#endif /* LIBPLOUTON_H */

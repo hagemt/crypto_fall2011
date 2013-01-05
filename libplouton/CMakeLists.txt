@@ -16,10 +16,14 @@
 # along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
-#include_directories("${CMAKE_BINARY_DIR}")
-set(CONFIGURATION_HEADER "${CMAKE_SOURCE_DIR}/configuration.h")
+set(CONFIGURATION_HEADER "${CMAKE_SOURCE_DIR}/libplouton.h")
 configure_file("libplouton.h.in" "${CONFIGURATION_HEADER}" @ONLY)
 set_property(SOURCE "${CONFIGURATION_HEADER}" PROPERTY GENERATED TRUE)
+install(
+	FILES "${CONFIGURATION_HEADER}"
+	PUBLIC_HEADER DESTINATION include
+	COMPONENT "Headers"
+)
 
 file(GLOB LIBPLOUTON_HEADERS "*.h")
 install(
