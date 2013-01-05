@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+# Direct the driver to the executables/commands
+BANK_EXE='@EXECUTABLE_OUTPUT_PATH@/bank'
+BANK_CMD="$BANK_EXE @BANKING_PORT_SERVER@"
+PROXY_EXE='@EXECUTABLE_OUTPUT_PATH@/proxy'
+PROXY_CMD="$PROXY_EXE @BANKING_PORT_SERVER@ @BANKING_PORT_CLIENT@"
+ATM_EXE='@EXECUTABLE_OUTPUT_PATH@/atm'
+ATM_CMD="$ATM_EXE @BANKING_PORT_CLIENT@"
+
+# Ensure adequate permissions
+if [ ! -x "$BANK_EXE" ]; then
+	echo "Cannot execute: $BANK_EXE";
+	exit 1;
+fi
+if [ ! -x "$PROXY_EXE" ]; then
+	echo "Cannot execute: $PROXY_EXE";
+	exit 2;
+fi
+if [ ! -x "$ATM_EXE" ]; then
+	echo "Cannot execute: $ATM_EXE";
+	exit 3;
+fi
+
+# Launch all the executables via terminal
+gnome-terminal \
+	--tab \
+		--title="bank @BANKING_VERSION_STRING@" \
+		--command="sleep 1 && $BANK_CMD" \
+	--tab \
+		--title="proxy @BANKING_VERSION_STRING@" \
+		--command="sleep 2 && $PROXY_CMD" \
+	--tab \
+		--title="atm @BANKING_VERSION_STRING@" \
+		--command="sleep 3 && $ATM_CMD" \
+# TODO allow a variety of terminals
