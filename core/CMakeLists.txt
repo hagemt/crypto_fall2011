@@ -16,8 +16,6 @@
 # along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
-find_library()
-
-
 file(GLOB LIBPLOUTON_SOURCES "*.c")
 add_library(plouton ${LIBPLOUTON_SOURCES})
+target_link_libraries(plouton gcrypt pthread sqlite3 readline)

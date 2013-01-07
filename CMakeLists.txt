@@ -52,8 +52,8 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "${CMAKE_BUILD_TYPES}")
 endif(NOT CMAKE_BUILD_TYPE MATCHES "${CMAKE_BUILD_TYPES}")
 
 # Force library/executable code into certain locations
-set(LIBRARY_OUTPUT_PATH "${CMAKE_BUILD_DIR}/lib")
-set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BUILD_DIR}/bin")
+set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}/lib")
+set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/bin")
 
 ## Configuration (pre-build triggers)
 
@@ -62,7 +62,7 @@ configure_file("libplouton.pc.in" "libplouton.pc")
 install(
 	FILES "${CMAKE_BINARY_DIR}/libplouton.pc"
 	DESTINATION lib/pkgconfig
-	COMPONENTS "Development"
+	COMPONENT "Development"
 )
 
 # Configure the driver script TODO make universal
@@ -76,11 +76,7 @@ mark_as_advanced(FORCE
 	BANKING_PORT_CLIENT
 	BANKING_EXECUTABLE_PATH
 )
-configure_file(
-	"${PROJECT_SOURCE_DIR}/gnome.sh.in"
-	"${PROJECT_BINARY_DIR}/gnome.sh"
-	@ONLY
-)
+configure_file("gnome.sh.in" "gnome.sh" @ONLY)
 
 # Configure the constants (incl. PINs)
 if(NOT BANKING_PIN_SEED)
@@ -114,7 +110,22 @@ mark_as_advanced(FORCE
 )
 
 # TODO implement IP protocol version designation
-#option(USE_IPV6 "Build with IPv6 support (only)" OFF)
+option(USE_IPV6 "Build with IPv6 support (only)" ON)
+if(USE_IPV6)
+	set(BANKING_ADDR_IPV6 "::1")
+	add_definitions(-DIPV6)
+endif(USE_IPV6)
+# TODO implement better version of OTP
+option(USE_OTP "Build using shared memory solution" ON)
+if(USE_OTP)
+	add_definitions(-DUSE_OTP)
+endif(USE_OTP)
+# TODO enable single-threaded bank instances
+option(USE_THREADS "Build using support for SMP" ON)
+if(USE_THREADS)
+	add_definitions(-DUSE_THREADS)
+endif(USE_THREADS)
+mark_as_advanced(FORCE USE_IPV6 USE_OTP USE_THREADS)
 
 # Ensure a default address is configured (and cached)
 if(NOT BANKING_ADDR_IPV4)
@@ -146,22 +157,24 @@ if(BANKING_DB_INIT)
 endif(BANKING_DB_INIT)
 
 # Options for what to build (always libplouton)
-option(BUILD_ATM   "Produce binaries for the ATM"   ON)
-option(BUILD_BANK  "Produce binaries for the bank"  ON)
-option(BUILD_PROXY "Produce binaries for the proxy" ON)
+option(BUILD_ATM   "Produce binaries for the ATM"   OFF)
+option(BUILD_BANK  "Produce binaries for the bank"  OFF)
+option(BUILD_PROXY "Produce binaries for the proxy" OFF)
 
 ## Libraries, Executables, etc. (build essentials)
 
+option(BUILD_SHARED_LIBS "Produce shared libraries" OFF)
+
 # TODO: set REQUIRED more intelligently
 find_library(PROMPT_LIBRARY_PATH readline REQUIRED)
-find_library(CRYPTO_LIBRARY_PATH gcrypt REQUIRED)
-find_library(DB_LIBRARY_PATH sqlite3 REQUIRED)
-find_library(THREAD_LIBRARY_PATH pthread REQUIRED)
+find_library(CRYPTO_LIBRARY_PATH gcrypt   REQUIRED)
+find_library(SQL_DB_LIBRARY_PATH sqlite3  REQUIRED)
+find_library(THREAD_LIBRARY_PATH pthread  REQUIRED)
 
 # FIXME: build everything
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 add_subdirectory(libplouton)
-add_subdirectory(utilities)
+add_subdirectory(core)
 add_subdirectory(ui)
 
 ## Testing, Packaging, etc. (post-build triggers)

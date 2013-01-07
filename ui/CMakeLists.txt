@@ -16,26 +16,29 @@
 # along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
-# Executables
-
 if(BUILD_ATM)
 	add_executable(atm atm.c)
-	target_link_libraries(atm )
-	install()
+	target_link_libraries(atm plouton)
+	install(TARGETS atm
+		RUNTIME DESTINATION bin
+		COMPONENT "ATM"
+	)
 endif(BUILD_ATM)
 
 if(BUILD_BANK)
 	add_executable(bank bank.c)
-	target_link_libraries(bank )
-	install()
+	target_link_libraries(bank plouton)
+	install(TARGETS bank
+		RUNTIME DESTINATION bin
+		COMPONENT "Bank"
+	)
 endif(BUILD_BANK)
 
 if(BUILD_PROXY)
 	add_executable(proxy proxy.c)
-	target_link_libraries(proxy )
-	install(
-		FILES proxy
-
+	target_link_libraries(proxy plouton)
+	install(TARGETS proxy
+		RUNTIME DESTINATION bin
+		COMPONENT "Proxy"
 	)
 endif(BUILD_PROXY)
-
