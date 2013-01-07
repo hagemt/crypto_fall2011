@@ -26,6 +26,8 @@
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 #endif
 
+void *strong_random_bytes(size_t);
+
 /* TODO: remove arguments or standardize */
 int init_crypto(const int * const);
 void shutdown_crypto(const int * const);

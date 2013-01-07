@@ -25,34 +25,27 @@ typedef unsigned char *key_data_t;
 
 struct key_list_t {
 	time_t issued, expires;
-	key_data_t *key;
+	key_data_t key;
 	struct key_list_t *next;
-} keystore;
+};
 
-#if USING_THREADS
+extern struct key_list_t keystore;
+
+#ifdef USING_THREADS
 #include <pthread.h>
-const static pthread_mutex_t keystore_mutex;
+extern pthread_mutex_t keystore_mutex;
 #endif /* USING_THREADS */
 
 int attach_key(key_data_t *);
-int revoke_key(key_data_t *);
 
-inline int
-request_key(key_data_t *key) {
-	/* Key requests are just new attachments */
-	if (key) {
-		/* TODO better mechanism! (NULLs are unclear) */
-		*key = (key_data_t) 0x0;
-	}
-	return attach_key(key);
-}
+int request_key(key_data_t *);
+int revoke_key(key_data_t *);
 
 #include <stddef.h>
 
 struct credential_t {
-	/* TODO use sized string? */
-	char username[BANKING_MAX_COMMAND_LENGTH];
-	size_t userlength;
+	char buffer[BANKING_MAX_COMMAND_LENGTH];
+	size_t position;
 	key_data_t key;
 };
 

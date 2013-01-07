@@ -22,12 +22,29 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* TODO static members? should these be const? */
+struct key_list_t keystore;
+#if USING_THREADS
+pthread_mutex_t keystore_mutex;
+#endif /* USING_THREADS */
+
+inline int
+request_key(key_data_t *key)
+{
+	/* Key requests are just new attachments */
+	if (key) {
+		/* TODO better mechanism! (NULLs are unclear) */
+		*key = NULL;
+	}
+	return attach_key(key);
+}
+
 void
 set_username(struct credential_t *id, char *buffer, size_t len) {
 	assert(id && buffer && strnlen(buffer, BANKING_MAX_COMMAND_LENGTH) == len);
-	id->userlength = len;
-	memset(id->username, '\0', BANKING_MAX_COMMAND_LENGTH);
-	strncpy(id->username, buffer, len);
+	memset(id->buffer, '\0', BANKING_MAX_COMMAND_LENGTH);
+	strncpy(id->buffer, buffer, len);
+	id->position = len;
 }
 
 int
@@ -49,7 +66,7 @@ attach_key(key_data_t *key)
 	/* Attempt to allocate a new key entry */
 	if ((entry = malloc(sizeof(struct key_list_t)))) {
 		/* Allocate randomized bytes */
-		if ((*key = gcry_random_bytes_secure(BANKING_AUTH_KEY_LENGTH, GCRY_STRONG_RANDOM))) {
+		if ((*key = strong_random_bytes(BANKING_AUTH_KEY_LENGTH))) {
 			/* Copy BANKING_AUTH_KEY_LENGTH bytes if available */
 			if (tmp) {
 				memcpy(*key, tmp, BANKING_AUTH_KEY_LENGTH);
