@@ -20,7 +20,7 @@
 #include <unistd.h>
 /* TODO ^ this is only needed for unlink, remove it? */
 
-#include "libplouton/db.h"
+#include "libplouton.h"
 
 void
 destroy_db(const char * db_path, sqlite3 * db_conn)
@@ -52,8 +52,8 @@ init_db(const char * db_path, sqlite3 ** db_conn)
   /* Create the table with preliminary data */
   if (return_status == BANKING_SUCCESS) {
     status = sqlite3_prepare_v2(*db_conn,
-                                SQL_CMD_CREATE_TABLE,
-                                sizeof(SQL_CMD_CREATE_TABLE),
+                                SQL_ACCOUNT_CREATE_TABLE,
+                                sizeof(SQL_ACCOUNT_CREATE_TABLE),
                                 &statement,
                                 &residue);
     if (status != SQLITE_OK
@@ -75,8 +75,8 @@ init_db(const char * db_path, sqlite3 ** db_conn)
   if (return_status == BANKING_SUCCESS) {
     /* Prepare the insert statement */
     status = sqlite3_prepare_v2(*db_conn,
-                                SQL_CMD_INSERT_ACCOUNT,
-                                sizeof(SQL_CMD_INSERT_ACCOUNT),
+                                SQL_ACCOUNT_INSERT,
+                                sizeof(SQL_ACCOUNT_INSERT),
                                 &statement,
                                 &residue);
     if (status == SQLITE_OK) {
@@ -85,12 +85,12 @@ init_db(const char * db_path, sqlite3 ** db_conn)
                       sizeof(struct account_info_t); ++i) {
         /* Individual error status is too granular, indicate generally */
         status = (sqlite3_bind_text(statement, 1,
-                                    accounts[i].name,
-                                    accounts[i].namelength,
+                                    accounts[i].name.str,
+                                    accounts[i].name.len,
                                     SQLITE_STATIC) == SQLITE_OK) &&
                  (sqlite3_bind_text(statement, 2,
-                                    accounts[i].pin,
-                                    accounts[i].pinlength,
+                                    accounts[i].pin.str,
+                                    accounts[i].pin.len,
                                     SQLITE_STATIC) == SQLITE_OK) &&
                  (sqlite3_bind_int (statement, 3,
                                     accounts[i].balance) == SQLITE_OK) &&
@@ -119,8 +119,8 @@ init_db(const char * db_path, sqlite3 ** db_conn)
   /* Dump the initial contents of the database in debug mode */
   if (return_status == BANKING_SUCCESS) {
     status = sqlite3_prepare_v2(*db_conn,
-                                SQL_CMD_SELECT_ALL,
-                                sizeof(SQL_CMD_SELECT_ALL),
+                                SQL_ACCOUNT_SELECT_ALL,
+                                sizeof(SQL_ACCOUNT_SELECT_ALL),
                                 &statement,
                                 &residue);
     if (status == SQLITE_OK) {
@@ -162,8 +162,8 @@ do_check(sqlite3 * db_conn, const char ** residue,
 
   /* Setup the system, which ensures cleanup runs */
   status = sqlite3_prepare_v2(db_conn,
-                              SQL_CMD_LOOKUP_PIN,
-                              sizeof(SQL_CMD_LOOKUP_PIN),
+                              SQL_ACCOUNT_SELECT_PIN,
+                              sizeof(SQL_ACCOUNT_SELECT_PIN),
                               &statement,
                               residue);
   if (status != SQLITE_OK) {
@@ -237,8 +237,8 @@ do_lookup(sqlite3 * db_conn, const char ** residue,
 
   /* Setup the system, which ensures cleanup runs */
   status = sqlite3_prepare_v2(db_conn,
-                              SQL_CMD_LOOKUP_BALANCE,
-                              sizeof(SQL_CMD_LOOKUP_BALANCE),
+                              SQL_ACCOUNT_SELECT_BALANCE,
+                              sizeof(SQL_ACCOUNT_SELECT_BALANCE),
                               &statement,
                               residue);
   if (status != SQLITE_OK) {
@@ -314,8 +314,8 @@ do_update(sqlite3 * db_conn, const char ** residue,
   return_status = BANKING_SUCCESS;
 
   status = sqlite3_prepare_v2(db_conn,
-                              SQL_CMD_UPDATE_BALANCE,
-                              sizeof(SQL_CMD_UPDATE_BALANCE),
+                              SQL_ACCOUNT_UPDATE_BALANCE,
+                              sizeof(SQL_ACCOUNT_UPDATE_BALANCE),
                               &statement,
                               residue);
   if (status != SQLITE_OK) {

@@ -16,39 +16,44 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "libplouton/socket.h"
+#include "libplouton.h"
 
-/* Standard includes */
 #include <stdio.h>
-#include <stdlib.h>
+//#include <stdlib.h>
 #include <unistd.h>
 
-/* Networking includes */
+/*
 #include <arpa/inet.h>
 #include <netdb.h>
+*/
+#include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
-static void
+static inline void
 __destroy_socket(int sock)
 {
-  /* Attempt to stop communication in both directions */
-  if (shutdown(sock, SHUT_RDWR)) {
-    fprintf(stderr, "WARNING: unable to shutdown socket\n");
-  }
-  /* Release the associated resources */
-  if (close(sock)) {
-    fprintf(stderr, "WARNING: unable to close socket\n");
-  }
+	/* Attempt to stop communication in both directions */
+	if (shutdown(sock, SHUT_RDWR)) {
+		fprintf(stderr, "WARNING: unable to shutdown socket\n");
+	}
+	/* Release the associated resources */
+	if (close(sock)) {
+		fprintf(stderr, "WARNING: unable to close socket\n");
+	}
 }
 
-static int
+
+// FIXME: use `typedef struct sockaddr_storage address_t;'
+
+static inline int
 __create_socket(const char *port, struct sockaddr_in *local_addr)
 {
 	int sock;
 	char *residue;
 	long int port_num;
 
+	assert(port && local_addr);
 	/* Ascertain address information (including port number) */
 	port_num = strtol(port, &residue, 10);
 
@@ -85,7 +90,7 @@ __create_socket(const char *port, struct sockaddr_in *local_addr)
 	return sock;
 }
 
-inline int
+int
 client_socket(const char *port)
 {
 	int sock;
@@ -98,7 +103,7 @@ client_socket(const char *port)
 	}
 
 	/* Perform connect */
-	if (connect(sock, (struct sockaddr *)(&local_addr), addr_len)) {
+	if (connect(sock, (const struct sockaddr *)(&local_addr), addr_len)) {
 		fprintf(stderr, "ERROR: unable to connect to socket\n");
 		__destroy_socket(sock);
 		return BANKING_FAILURE;
@@ -130,12 +135,12 @@ server_socket(const char *port)
 	}
 
 	/* Perform bind and listen */
-	if (bind(sock, (struct sockaddr *)(&local_addr), addr_len)) {
+	if (bind(sock, (const struct sockaddr *)(&local_addr), addr_len)) {
 		fprintf(stderr, "ERROR: unable to bind socket\n");
 		__destroy_socket(sock);
 		return BANKING_FAILURE;
 	}
-	if (listen(sock, MAX_CONNECTIONS)) {
+	if (listen(sock, BANKING_MAX_CONNECTIONS)) {
 		fprintf(stderr, "ERROR: unable to listen on socket\n");
 		destroy_socket(sock);
 		return BANKING_FAILURE;
