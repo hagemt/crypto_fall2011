@@ -92,14 +92,14 @@ handle_connection(int sock, int *conn)
 	return BANKING_FAILURE;
 }
 
-ssize_t
+inline ssize_t
 recv_relay(int sock)
 {
 	/* FIXME: Do logging? or maybe cryptanalysis */
 	return recv(sock, session_data.buffer, BANKING_MAX_COMMAND_LENGTH, 0);
 }
 
-ssize_t
+inline ssize_t
 send_relay(int sock)
 {
 	/* FIXME: Do logging? or maybe cryptanalysis */
@@ -165,11 +165,11 @@ main(int argc, char ** argv)
 	}
 
 	/* Socket initialization */
-	if ((session_data.csock = init_client_socket(argv[2])) < 0) {
+	if ((session_data.csock = client_socket(argv[2])) < 0) {
 		fprintf(stderr, "ERROR: unable to connect to server\n");
 		return EXIT_FAILURE;
 	}
-	if ((session_data.ssock = init_server_socket(argv[1])) < 0) {
+	if ((session_data.ssock = server_socket(argv[1])) < 0) {
 		fprintf(stderr, "ERROR: unable to start server\n");
 		destroy_socket(session_data.csock);
 		return EXIT_FAILURE;
@@ -215,7 +215,7 @@ main(int argc, char ** argv)
 		destroy_socket(session_data.conn);
 		/* Re-establish with the server TODO should this be necessary? */
 		destroy_socket(session_data.csock);
-		session_data.csock = init_client_socket(argv[2]);
+		session_data.csock = client_socket(argv[2]);
 	}
 
 	/* Teardown, reuse signal handler */

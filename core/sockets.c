@@ -30,19 +30,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-static inline void
-__destroy_socket(int sock)
-{
-	/* Attempt to stop communication in both directions */
-	if (shutdown(sock, SHUT_RDWR)) {
-		fprintf(stderr, "WARNING: unable to shutdown socket\n");
-	}
-	/* Release the associated resources */
-	if (close(sock)) {
-		fprintf(stderr, "WARNING: unable to close socket\n");
-	}
-}
-
 
 // FIXME: use `typedef struct sockaddr_storage address_t;'
 
@@ -88,6 +75,19 @@ __create_socket(const char *port, struct sockaddr_in *local_addr)
 		fprintf(stderr, "ERROR: unable to open socket\n");
 	}
 	return sock;
+}
+
+inline void
+destroy_socket(int sock)
+{
+	/* Attempt to stop communication in both directions */
+	if (shutdown(sock, SHUT_RDWR)) {
+		fprintf(stderr, "WARNING: unable to shutdown socket\n");
+	}
+	/* Release the associated resources */
+	if (close(sock)) {
+		fprintf(stderr, "WARNING: unable to close socket\n");
+	}
 }
 
 int
