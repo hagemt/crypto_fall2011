@@ -16,13 +16,22 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef DB_UTILS_H
-#define DB_UTILS_H
+#ifndef BANKING_DB_H
+#define BANKING_DB_H
 
 #include "sqlite3.h"
+/* TODO functionalize, like so:
+#ifdef USE_SQLITE3
+#include "sqlite3.h"
+#endif
+*/
 
-int init_db(const char *, sqlite3 **);
+/* NOTE: these methods are for sqlite3 ONLY */
 
+/*! \brief Open a connection to the given database. */
+int create_db(const char *, sqlite3 **);
+
+/*! \brief Close a connection to a given database. */
 void destroy_db(const char *, sqlite3 *);
 
 int do_lookup(
@@ -50,4 +59,4 @@ int do_check(
 	size_t pin_len
 );
 
-#endif /* DB_UTILS_H */
+#endif /* BANKING_DB_H */

@@ -36,17 +36,17 @@
  * \brief Numeric section
  */
 
-/* Important: BANKING_FAILURE < 0 FIXME bad constraint */
-#define BANKING_SUCCESS  0
-#define BANKING_FAILURE -1
+/* Important: BANKING_FAILURE is invalid file-descriptor */
+#define BANKING_SUCCESS 0x00
+#define BANKING_FAILURE (-1)
 
 /* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH*/
 #define BANKING_MAX_COMMAND_LENGTH 80
 #define BANKING_MAX_CONNECTIONS     5
 #define BANKING_MAX_TRANSACTION 10000
 
-#define BANKING_VERSION_MAJOR @BANKING_VERSION_MAJOR@
-#define BANKING_VERSION_MINOR @BANKING_VERSION_MINOR@
+#define BANKING_VERSION_MAJOR @CMAKE_PROJECT_VERSION_MAJOR@
+#define BANKING_VERSION_MINOR @CMAKE_PROJECT_VERSION_MINOR@
 
 /* Important: AUTH_KEY_LENGTH <= MAX_COMMAND_LENGTH */
 #define BANKING_AUTH_KEY_LENGTH   32 /* In bytes, so use 256-bit keys */
@@ -59,14 +59,14 @@
 #define BANKING_PORT_MAX 0xFFFF /* 65,535 */
 
 /* Not strictly numeric, but w/e */
-#define BANKING_ADDR_IPv4 "@BANKING_ADDR_IPV4@"
-#define BANKING_ADDR_IPv6 "@BANKING_ADDR_IPV6@"
+#define BANKING_ADDR_IPV4 "@BANKING_ADDR_IPV4@"
+#define BANKING_ADDR_IPV6 "@BANKING_ADDR_IPV6@"
 
 /*
  * \brief Database section
  */
-#define BANKING_DB_TYPE   "sqlite3"
-#define BANKING_DB_FILE   "@BANKING_DB_FILE@"
+#define BANKING_DB_TYPE "@BANKING_DB_TYPE@"
+#define BANKING_DB_FILE "@BANKING_DB_FILE@"
 
 /* Static SQL query strings, fillable at $variables */
 #define SQL_ACCOUNT_CREATE_TABLE \
@@ -89,7 +89,7 @@
 #define ACCOUNT_INFO(NAME, PIN, BALANCE) \
 	{ { #NAME, sizeof(#NAME) }, { #PIN, sizeof(#PIN) }, BALANCE }
 
-const account_info_t bank_accounts[] = {
+const struct account_info_t accounts[] = {
 	ACCOUNT_INFO(Alice, @BANKING_PIN_ALICE@, 100),
 	ACCOUNT_INFO(Bob,   @BANKING_PIN_BOB@,   50),
 	ACCOUNT_INFO(Eve,   @BANKING_PIN_EVE@,   0)
@@ -97,6 +97,7 @@ const account_info_t bank_accounts[] = {
 
 #include "libplouton/crypto.h"
 #include "libplouton/db.h"
+#include "libplouton/keystore.h"
 #include "libplouton/shell.h"
 #include "libplouton/socket.h"
 

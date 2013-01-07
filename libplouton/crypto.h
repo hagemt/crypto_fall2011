@@ -16,13 +16,8 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CRYPTO_H
-#define CRYPTO_H
-
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include <errno.h>
+#ifndef BANKING_CRYPTO_H
+#define BANKING_CRYPTO_H
 
 /* gcrypt includes */
 #define GCRYPT_NO_DEPRECATED
@@ -31,7 +26,17 @@
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 #endif
 
-#include "constants.h"
+/* TODO: remove arguments or standardize */
+int init_crypto(const int * const);
+void shutdown_crypto(const int * const);
 
+/* TODO: (re-)simplify interface? */
+void encrypt_message(struct buffet_t * buffet, const void * key);
+void decrypt_message(struct buffet_t * buffet, const void * key);
 
-#endif /* CRYPTO_H */
+#include <stddef.h>
+
+ssize_t send_message(const struct buffet_t *buffet, int sock);
+ssize_t recv_message(const struct buffet_t *buffet, int sock);
+
+#endif /* BANKING_CRYPTO_H */

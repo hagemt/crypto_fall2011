@@ -16,12 +16,17 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef BANKING_COMMANDS_H
-#define BANKING_COMMANDS_H
+#ifndef BANKING_SHELL_H
+#define BANKING_SHELL_H
 
 #include "types.h"
 
-int fetch_command(char *, commant_t *, pos_t *);
+typedef char *pos_t;
+
+/*! \brief Given a string, finds the command and seperates arguments */
+int fetch_command(char *, command_t *, pos_t *);
+
+/*! \brief Given a string, finds the handler and seperates arguments */
 int fetch_handler(char *, handler_t *, pos_t *);
 
 /* Command stubs */
@@ -79,15 +84,15 @@ int handle_deposit_command(handle_arg_t, char *);
 /* Generator macros */
 
 #define COMMAND_INFO(CMD_NAME) \
-	{ #CMD_NAME, &CMD_NAME##_command, sizeof(#CMD_NAME) },
+	{ { #CMD_NAME, sizeof(#CMD_NAME) }, &CMD_NAME##_command },
 
 #define HANDLER_INFO(CMD_NAME) \
-	{ #CMD_NAME, &handle_##CMD_NAME##_command, sizeof(#CMD_NAME) },
+	{ { #CMD_NAME, sizeof(#CMD_NAME) }, &handle_##CMD_NAME##_command },
 
 /* HOWTO: add any strings you'd like to be commands/handlers below
  * TODO: separate these into source, or should configure per-executable? */
 
-const command_info_t commands[] = {
+const struct command_info_t commands[] = {
   #ifdef USE_LOGIN
   COMMAND_INFO(login)
   #endif
@@ -107,10 +112,10 @@ const command_info_t commands[] = {
   COMMAND_INFO(deposit)
   #endif
   /* A mandatory command */
-  { "quit", NULL, sizeof("quit") }
+  { { "quit", sizeof("quit") }, NULL }
 };
 
-const handler_info_t handlers[] = {
+const struct handler_info_t handlers[] = {
   #ifdef HANDLE_LOGIN
   HANDLER_INFO(login)
   #endif
@@ -130,7 +135,7 @@ const handler_info_t handlers[] = {
   HANDLER_INFO(deposit)
   #endif
   /* A dummy handler */
-  { "ping", NULL, sizeof("ping") }
+  { { "ping", sizeof("ping") }, NULL }
 };
 
-#endif /* BANKING_COMMANDS_H */
+#endif /* BANKING_SHELL_H */

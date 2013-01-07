@@ -19,41 +19,13 @@
 #ifndef SOCKET_UTILS_H
 #define SOCKET_UTILS_H
 
-int server_socket(const char * port);
-int client_socket(const char * port);
+int server_socket(const char *);
+int client_socket(const char *);
+
+void destroy_socket(int);
 
 /*
-void destroy_socket(int);
 int create_socket(const char *port, struct sockaddr_in *local_addr);
 */
-
-#include <stdio.h>
-
-inline void
-__hexdump(FILE * fp, unsigned char * buffer, size_t len) {
-	size_t i, j;
-	unsigned int mark;
-
-	/* While there's still buffer, handle lines in sixteen bytes per row */
-	for (mark = 0x00, i = 0; i < len; mark += 0x10, i = j) {
-		/* First, print index marker */
-		fprintf(fp, "[%08X] ", mark);
-		for (j = i; j < len && (j - i) < 16; ++j) {
-			fprintf(fp, "%X%X ", (buffer[j] & 0xF0) >> 4, (buffer[j] & 0x0F));
-		}
-
-		/* Pad with spaces as necessary */
-		for (j -= i; j < 16; ++j) {
-			fprintf(fp, "   ");
-		}
-
-		/* Tack on the ASCII representation, dots for non-printables */
-		putc(' ', fp);
-		for (j = i; j < len && (j - i) < 16; ++j) {
-			putc((buffer[j] < ' ' || buffer[j] > '~') ? '.' : buffer[j], fp);
-		}
-		putc('\n', fp);
-	}
-}
 
 #endif /* SOCKET_UTILS_H */
