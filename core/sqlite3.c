@@ -99,7 +99,7 @@ init_db(const char * db_path, sqlite3 ** db_conn)
         if (!status) {
           fprintf(stderr,
                   "WARNING: unable to populate account info for '%s'\n",
-                  accounts[i].name);
+                  accounts[i].name.str);
         }
       }
     }
