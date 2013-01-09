@@ -16,14 +16,14 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "libplouton.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <time.h>
-
-#include "libplouton.h"
 
 static struct proxy_session_data_t {
 	/* A proxy connects clients to servers (intermediary layer) */
