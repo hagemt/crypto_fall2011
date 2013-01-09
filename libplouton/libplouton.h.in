@@ -32,6 +32,8 @@
 #define BANKING_MSG_PROMPT_SHELL "[banking] $ "
 #define BANKING_MSG_PROMPT_PIN   "Enter PIN: "
 
+/* TODO localization for BANKING_MSGs */
+
 /*
  * \brief Numeric section
  */
@@ -66,7 +68,8 @@
  * \brief Database section
  */
 #define BANKING_DB_TYPE "@BANKING_DB_TYPE@"
-#define BANKING_DB_FILE "@BANKING_DB_FILE@"
+#define BANKING_DB_FILE \
+	"@BANKING_DB_FILE@"
 
 /* Static SQL query strings, fillable at $variables */
 #define SQL_ACCOUNT_CREATE_TABLE \
@@ -85,20 +88,12 @@
 /* TODO move to source file? */
 
 #include "libplouton/types.h"
-
-#define ACCOUNT_INFO(NAME, PIN, BALANCE) \
-	{ { #NAME, sizeof(#NAME) }, { #PIN, sizeof(#PIN) }, BALANCE }
-
-const struct account_info_t accounts[] = {
-	ACCOUNT_INFO(Alice, @BANKING_PIN_ALICE@, 100),
-	ACCOUNT_INFO(Bob,   @BANKING_PIN_BOB@,   50),
-	ACCOUNT_INFO(Eve,   @BANKING_PIN_EVE@,   0)
-};
-
 #include "libplouton/crypto.h"
 #include "libplouton/db.h"
-#include "libplouton/keystore.h"
 #include "libplouton/shell.h"
 #include "libplouton/socket.h"
+
+#include <stdio.h>
+void hexdump(FILE *, unsigned char *, size_t);
 
 #endif /* LIBPLOUTON_H */
