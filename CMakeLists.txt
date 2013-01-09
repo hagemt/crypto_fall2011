@@ -171,9 +171,14 @@ find_library(CRYPTO_LIBRARY_PATH gcrypt   REQUIRED)
 find_library(SQL_DB_LIBRARY_PATH sqlite3  REQUIRED)
 find_library(THREAD_LIBRARY_PATH pthread  REQUIRED)
 
-# FIXME: build everything
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
+# Configure support library
 add_subdirectory(libplouton)
+include_directories(
+	"${CMAKE_SOURCE_DIR}"
+	"${CMAKE_BINARY_DIR}"
+)
+
+# Build main components
 add_subdirectory(core)
 add_subdirectory(ui)
 
