@@ -18,20 +18,18 @@
 
 #include "libplouton.h"
 
+#include <assert.h>
 #include <stdio.h>
-//#include <stdlib.h>
 #include <unistd.h>
 
-/*
 #include <arpa/inet.h>
-#include <netdb.h>
-*/
 #include <netinet/in.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 
 
-// FIXME: use `typedef struct sockaddr_storage address_t;'
+/* FIXME: use `typedef struct sockaddr_storage address_t;' */
 
 static inline int
 __create_socket(const char *port, struct sockaddr_in *local_addr)
@@ -105,7 +103,7 @@ client_socket(const char *port)
 	/* Perform connect */
 	if (connect(sock, (const struct sockaddr *)(&local_addr), addr_len)) {
 		fprintf(stderr, "ERROR: unable to connect to socket\n");
-		__destroy_socket(sock);
+		destroy_socket(sock);
 		return BANKING_FAILURE;
 	}
 
@@ -137,7 +135,7 @@ server_socket(const char *port)
 	/* Perform bind and listen */
 	if (bind(sock, (const struct sockaddr *)(&local_addr), addr_len)) {
 		fprintf(stderr, "ERROR: unable to bind socket\n");
-		__destroy_socket(sock);
+		destroy_socket(sock);
 		return BANKING_FAILURE;
 	}
 	if (listen(sock, BANKING_MAX_CONNECTIONS)) {
