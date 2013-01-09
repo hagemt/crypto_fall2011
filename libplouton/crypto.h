@@ -19,6 +19,22 @@
 #ifndef BANKING_CRYPTO_H
 #define BANKING_CRYPTO_H
 
+extern struct key_list_t keystore;
+
+#ifdef USING_THREADS
+#include <pthread.h>
+extern pthread_mutex_t keystore_mutex;
+#endif /* USING_THREADS */
+
+int attach_key(key_data_t *);
+
+int request_key(key_data_t *);
+int revoke_key(key_data_t *);
+
+#include <stddef.h>
+
+void set_username(struct credential_t *, char *, size_t);
+
 /* gcrypt includes */
 #define GCRYPT_NO_DEPRECATED
 #include <gcrypt.h>
@@ -27,6 +43,7 @@ GCRY_THREAD_OPTION_PTHREAD_IMPL;
 #endif
 
 void *strong_random_bytes(size_t);
+void *secure_delete(unsigned char *, size_t);
 
 /* TODO: remove arguments or standardize */
 int init_crypto(const int * const);
