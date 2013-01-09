@@ -81,61 +81,9 @@ int handle_transfer_command(handle_arg_t, char *);
 int handle_deposit_command(handle_arg_t, char *);
 #endif
 
-/* Generator macros */
-
-#define COMMAND_INFO(CMD_NAME) \
-	{ { #CMD_NAME, sizeof(#CMD_NAME) }, &CMD_NAME##_command },
-
-#define HANDLER_INFO(CMD_NAME) \
-	{ { #CMD_NAME, sizeof(#CMD_NAME) }, &handle_##CMD_NAME##_command },
-
-/* HOWTO: add any strings you'd like to be commands/handlers below
- * TODO: separate these into source, or should configure per-executable? */
-
-const struct command_info_t commands[] = {
-  #ifdef USE_LOGIN
-  COMMAND_INFO(login)
-  #endif
-  #ifdef USE_BALANCE
-  COMMAND_INFO(balance)
-  #endif
-  #ifdef USE_WITHDRAW
-  COMMAND_INFO(withdraw)
-  #endif
-  #ifdef USE_LOGOUT
-  COMMAND_INFO(logout)
-  #endif
-  #ifdef USE_TRANSFER
-  COMMAND_INFO(transfer)
-  #endif
-  #ifdef USE_DEPOSIT
-  COMMAND_INFO(deposit)
-  #endif
-  /* A mandatory command */
-  { { "quit", sizeof("quit") }, NULL }
-};
-
-const struct handler_info_t handlers[] = {
-  #ifdef HANDLE_LOGIN
-  HANDLER_INFO(login)
-  #endif
-  #ifdef HANDLE_BALANCE
-  HANDLER_INFO(balance)
-  #endif
-  #ifdef HANDLE_WITHDRAW
-  HANDLER_INFO(withdraw)
-  #endif
-  #ifdef HANDLE_LOGOUT
-  HANDLER_INFO(logout)
-  #endif
-  #ifdef HANDLE_TRANSFER
-  HANDLER_INFO(transfer)
-  #endif
-  #ifdef HANDLE_DEPOSIT
-  HANDLER_INFO(deposit)
-  #endif
-  /* A dummy handler */
-  { { "ping", sizeof("ping") }, NULL }
-};
+/*
+int quit_command(char *);
+int handle_ping_command(handle_arg_t, char *);
+*/
 
 #endif /* BANKING_SHELL_H */
