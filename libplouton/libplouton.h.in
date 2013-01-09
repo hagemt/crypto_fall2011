@@ -34,6 +34,10 @@
 
 /* TODO localization for BANKING_MSGs */
 
+#define BANKING_PIN_ALICE "@BANKING_PIN_ALICE@"
+#define BANKING_PIN_BOB   "@BANKING_PIN_BOB@"
+#define BANKING_PIN_EVE   "@BANKING_PIN_EVE@"
+
 /*
  * \brief Numeric section
  */

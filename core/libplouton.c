@@ -21,6 +21,15 @@
 #include <assert.h>
 #include <string.h>
 
+#define ACCOUNT_INFO(NAME, PIN, BALANCE) \
+	{ { #NAME, sizeof(#NAME) }, { #PIN, sizeof(#PIN) }, BALANCE }
+
+const struct account_info_t accounts[] = {
+	ACCOUNT_INFO(Alice, BANKING_PIN_ALICE, 100),
+	ACCOUNT_INFO(Bob,   BANKING_PIN_BOB,   50),
+	ACCOUNT_INFO(Eve,   BANKING_PIN_EVE,   0)
+};
+
 int
 fetch_command(char *cmd, command_t *fun, pos_t *args)
 {
@@ -54,7 +63,7 @@ fetch_command(char *cmd, command_t *fun, pos_t *args)
 int
 fetch_handle(char *msg, handler_t *hdl, pos_t *args)
 {
-  int i, len;
+	int i, len;
 
 	/* Input sanitation */
 	len = strnlen(msg, BANKING_MAX_COMMAND_LENGTH);
