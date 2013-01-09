@@ -107,9 +107,8 @@ revoke_key(key_data_t *key)
 				             (char *)(      *key), BANKING_AUTH_KEY_LENGTH)) {
 					/* If so, force it to expire and purge */
 					entry->expires = entry->issued;
-					gcry_create_nonce(entry->key, BANKING_AUTH_KEY_LENGTH);
-					gcry_free(entry->key);
-					entry->key = *key = NULL;
+					entry->key = secure_delete(entry->key, BANKING_AUTH_KEY_LENGTH);
+					*key = NULL; /* FIXME unnecessary? */
 					return BANKING_SUCCESS;
 				}
 			}

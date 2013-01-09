@@ -24,22 +24,63 @@ strong_random_bytes(size_t len)
 	return gcry_random_bytes_secure(len, GCRY_STRONG_RANDOM);
 }
 
+inline void *
+secure_delete(unsigned char *addr, size_t len)
+{
+	gcry_create_nonce(addr, len);
+	gcry_free(addr);
+	return NULL;
+}
+
 /* We wrap read/write on the socket for simple auditing */
+
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <unistd.h>
 
 ssize_t
 send_message(const struct buffet_t *buffet, int sock)
 {
+	ssize_t result;
 	assert(buffet && sock >= 0);
 	/* TODO AAA features? */
-	return write(sock, buffet->cbuffer, BANKING_MAX_COMMAND_LENGTH);
+	errno = 0;
+	result = write(sock, buffet->cbuffer, BANKING_MAX_COMMAND_LENGTH);
 	/* TODO assurance that only this function can write to sock? */
+	if (result != BANKING_MAX_COMMAND_LENGTH) {
+		fprintf(stderr, "[WARNING] code %i (write failed on %i)\n", errno, sock);
+#ifndef NDEBUG
+		if (result != -1) {
+			fprintf(stderr, "[INFO] %i bytes (where %i were expected)\n",
+					(int) result, BANKING_MAX_COMMAND_LENGTH);
+		} else {
+			perror("[DEBUG] ");
+		}
+#endif /* DEBUG */
+	}
+	return result;
 }
 
 ssize_t
 recv_message(const struct buffet_t *buffet, int sock)
 {
+	ssize_t result;
 	assert(buffet && sock >= 0);
 	/* TODO AAA features? */
-	return read(sock, buffet->cbuffer, BANKING_MAX_COMMAND_LENGTH);
+	errno = 0;
+	result = read(sock, (void *) buffet->cbuffer, BANKING_MAX_COMMAND_LENGTH);
 	/* TODO assurance that only this function can write to sock? */
+	if (result != BANKING_MAX_COMMAND_LENGTH) {
+		fprintf(stderr, "[WARNING] code %i (read failed on %i)\n", errno, sock);
+#ifndef NDEBUG
+		if (result != -1) {
+			fprintf(stderr, "[INFO] %i bytes (where %i were expected)\n",
+					(int) result, BANKING_MAX_COMMAND_LENGTH);
+		} else {
+			perror("[DEBUG] ");
+		}
+#endif /* DEBUG */
+	}
+	return result;
 }
