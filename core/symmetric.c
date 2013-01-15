@@ -23,14 +23,14 @@
 #include <assert.h>
 #include <string.h>
 
-/*! \brief Ensure that all buffers are clear */
 inline void
-clear_buffet(struct buffet_t * buffet)
+clear_buffet(struct buffet_t *buffet)
 {
 	assert(buffet);
 	memset(buffet->pbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
 	memset(buffet->cbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
 	memset(buffet->tbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
+	/* FIXME should noncify instead? */
 }
 
 inline void
