@@ -23,8 +23,8 @@
 
 void handle_signal(int);
 
-typedef void (*thunk_t)();
+typedef void (*callback_t)();
 
-void init_signals(thunk_t);
+void init_signals(callback_t);
 
 #endif /* BANKING_SIGNALS_H */

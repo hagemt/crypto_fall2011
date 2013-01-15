@@ -20,7 +20,9 @@
 
 static struct sigaction __signal_action;
 static sigset_t __termination_signals;
-static thunk_t __signal_callback;
+static callback_t __signal_callback;
+
+#include <stddef.h>
 
 static inline void
 __die_on(int signum)
@@ -28,10 +30,12 @@ __die_on(int signum)
 	struct sigaction old_signal_action;
 	sigaction(signum, NULL, &old_signal_action);
 	if (old_signal_action.sa_handler != SIG_IGN) {
-		sigaction(signum, &signal_action, NULL);
-		sigaddset(&termination_signals, SIGINT);
+		sigaction(signum, &__signal_action, NULL);
+		sigaddset(&__termination_signals, SIGINT);
 	}
 }
+
+#include <string.h>
 
 void
 init_signals(callback_t callback)
@@ -47,7 +51,6 @@ init_signals(callback_t callback)
 }
 
 #include <stdio.h>
-#include <string.h>
 
 void
 handle_signal(int signum)
