@@ -89,13 +89,13 @@
 #define SQL_ACCOUNT_UPDATE_BALANCE \
 	"UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
 
-/* TODO move to source file? */
+/* These are the core headers */
 
 #include "libplouton/types.h"
 #include "libplouton/crypto.h"
 #include "libplouton/db.h"
 #include "libplouton/shell.h"
-#include "libplouton/socket.h"
+#include "libplouton/sockets.h"
 
 #include <stdio.h>
 void hexdump(FILE *, unsigned char *, size_t);
