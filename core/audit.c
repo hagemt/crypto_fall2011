@@ -74,7 +74,7 @@ recv_message(const struct buffet_t *buffet, int sock)
 inline void
 show_message(struct buffet_t *buffet)
 {
-	buffet->tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
+	buffet->tbuffer[BANKING_MAX_COMMAND_LENGTH - 1] = '\0';
 	printf("%s\n", buffet->tbuffer);
 	clear_buffet(buffet);
 }
