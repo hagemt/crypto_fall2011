@@ -22,10 +22,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* TODO static members? should these be const? */
-struct key_list_t keystore;
+/* TODO static members? */
+static struct key_list_t keystore;
 #if USING_THREADS
-pthread_mutex_t keystore_mutex;
+static pthread_mutex_t keystore_mutex;
 #endif /* USING_THREADS */
 
 inline int
@@ -37,14 +37,6 @@ request_key(key_data_t *key)
 		*key = NULL;
 	}
 	return attach_key(key);
-}
-
-void
-set_username(struct credential_t *id, char *buffer, size_t len) {
-	assert(id && buffer && strnlen(buffer, BANKING_MAX_COMMAND_LENGTH) == len);
-	memset(id->buffer, '\0', BANKING_MAX_COMMAND_LENGTH);
-	strncpy(id->buffer, buffer, len);
-	id->position = len;
 }
 
 int
@@ -118,3 +110,33 @@ revoke_key(key_data_t *key)
 
 	return BANKING_FAILURE;
 }
+
+#ifdef ENABLE_TESTING
+#include <stdio.h>
+
+void
+print_keystore(FILE *fp, const char *label)
+{
+	struct key_list_t *current;
+
+	/* Print the first key in the keystore */
+	fprintf(fp, "KEYSTORE (%s) (SEED: '%s') [TTL: %li/%li] CREATED: %s",
+			label, keystore.key,
+			(long)(keystore.expires - time(NULL)),
+			(long)(keystore.expires - keystore.issued),
+			ctime(&keystore.issued));
+
+	/* Advance through the keystore, starting at the first subkey */
+	for (current = keystore.next; current; current = current->next) {
+		if (current->key) {
+			fprintx(fp, "\tENTRY", current->key, BANKING_AUTH_KEY_LENGTH);
+			fprintf(fp, "\t\tEXPIRES: %s", ctime(&current->expires));
+		} else {
+			fprintf(fp, "\tENTRY REVOKED\n");
+		}
+		fprintf(fp, "\t\tISSUED:  %s", ctime(&current->issued));
+	}
+	fprintf(fp, "\n");
+}
+
+#endif /* ENABLE_TESTING */

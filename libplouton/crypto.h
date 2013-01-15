@@ -49,11 +49,15 @@ void clear_buffet(struct buffet_t *);
 
 /************************************************************************/
 
+enum crypto_t {
+	SYMMETRIC;
+};
+
 /* TODO: remove arguments or standardize */
 int init_crypto(const int *const);
 void shutdown_crypto(const int *const);
 #ifdef ENABLE_TESTING
-int test_crypto();
+int test_crypto(crypto_t);
 #endif /* ENABLE_TESTING */
 
 /* TODO: (re-)simplify interface? */
@@ -63,10 +67,10 @@ void decrypt_message(struct buffet_t *, key_data_t);
 #include <stddef.h>
 
 void *strong_random_bytes(size_t);
-void *secure_delete(unsigned char *, size_t);
+void *secure_delete(void *, size_t);
 
 ssize_t send_message(const struct buffet_t *, int);
 ssize_t recv_message(const struct buffet_t *, int);
-void print_message(struct buffet_t *);
+void show_message(struct buffet_t *);
 
 #endif /* BANKING_CRYPTO_H */

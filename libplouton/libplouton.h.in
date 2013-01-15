@@ -20,9 +20,7 @@
 #ifndef LIBPLOUTON_H
 #define LIBPLOUTON_H
 
-/*
- * \brief Message section
- */
+/*** Message section ***/
 
 /* AAA messages */
 #define BANKING_MSG_AUTH_CHECK "Are you still there?"
@@ -32,15 +30,13 @@
 #define BANKING_MSG_PROMPT_SHELL "[banking] $ "
 #define BANKING_MSG_PROMPT_PIN   "Enter PIN: "
 
-/* TODO localization for BANKING_MSGs */
+/* TODO localization for BANKING_MSGs using gettext */
 
 #define BANKING_PIN_ALICE "@BANKING_PIN_ALICE@"
 #define BANKING_PIN_BOB   "@BANKING_PIN_BOB@"
 #define BANKING_PIN_EVE   "@BANKING_PIN_EVE@"
 
-/*
- * \brief Numeric section
- */
+/*** Numeric section ***/
 
 /* Important: BANKING_FAILURE is invalid file-descriptor */
 #define BANKING_SUCCESS 0x00
@@ -68,9 +64,8 @@
 #define BANKING_ADDR_IPV4 "@BANKING_ADDR_IPV4@"
 #define BANKING_ADDR_IPV6 "@BANKING_ADDR_IPV6@"
 
-/*
- * \brief Database section
- */
+/*** Database section ***/
+
 #define BANKING_DB_TYPE "@BANKING_DB_TYPE@"
 #define BANKING_DB_FILE \
 	"@BANKING_DB_FILE@"
@@ -89,7 +84,7 @@
 #define SQL_ACCOUNT_UPDATE_BALANCE \
 	"UPDATE accounts SET balance=$balance WHERE name LIKE $name;"
 
-/* These are the core headers */
+/*** Core headers ***/
 
 #include "libplouton/types.h"
 #include "libplouton/crypto.h"
@@ -97,7 +92,9 @@
 #include "libplouton/shell.h"
 #include "libplouton/sockets.h"
 
+/* TODO remove this! */
 #include <stdio.h>
-void hexdump(FILE *, unsigned char *, size_t);
+void hexdump(FILE *fp, unsigned char *data, size_t len);
+void fprintx(FILE *fp, const char *label, unsigned char *data, size_t len);
 
 #endif /* LIBPLOUTON_H */

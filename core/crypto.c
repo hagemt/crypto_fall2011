@@ -38,6 +38,9 @@ secure_delete(unsigned char *addr, size_t len)
 	return NULL;
 }
 
+#include <assert.h>
+#include <string.h>
+
 inline void
 clear_buffet(struct buffet_t *buffet)
 {
@@ -45,6 +48,14 @@ clear_buffet(struct buffet_t *buffet)
 	memset(buffet->pbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
 	memset(buffet->cbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
 	memset(buffet->tbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
+}
+
+void
+set_username(struct credential_t *id, char *buffer, size_t len) {
+	assert(id && buffer && strnlen(buffer, BANKING_MAX_COMMAND_LENGTH) == len);
+	memset(id->buffer, '\0', BANKING_MAX_COMMAND_LENGTH);
+	strncpy(id->buffer, buffer, len);
+	id->position = len;
 }
 
 /*! \brief Obfuscate a message, filling the remainder with nonce
@@ -88,75 +99,66 @@ salt_and_pepper(const char *msg, const char *salt, struct buffet_t *buffet)
 	/* FIXME should pepper before salting? */
 }
 
+#ifndef NDEBUG
+#include <stdio.h>
+#endif /* DEBUG */
+
+#define BANKING_MD_LENGTH 64
+
 /*! \brief Produce the message digest of a banking command TODO SIMPLIFY
  *
- *  \param cmd    The command to checksum
- *  \param digest If non-NULL, check this against the hash of cmd
- *  \param buffer If NULL, hash to a temporary array
- *                If points to NULL, malloc space for the hash here
- *                Otherwise, buffer is assumed to be appropriate
- *  \return       0 if cmd hashes to digest, non-zero otherwise
+ * \param command The string containing data to be checked
+ * \param digest  If non-NULL, check this against the hash of command
+ * \param result  If non-NULL, the digest will be stored here
+ * \return        0 if command hashes to digest, non-zero otherwise
  */
 int
-checksum(char * cmd, unsigned char * digest, unsigned char ** buffer)
+checksum(char *command, unsigned char *digest, unsigned char *result)
 {
-  unsigned char * temporary;
-  int status;
-  size_t len;
+	/* gcry_md_get_algo_dlen(GCRY_MD_SHA512); */
+	unsigned char buffer[BANKING_MD_LENGTH];
+	int status = BANKING_SUCCESS;
 
-  temporary = NULL;
-  status = BANKING_SUCCESS;
-  len = gcry_md_get_algo_dlen(GCRY_MD_SHA256);
+	/* Try to take the hash of the command and buffer it */
+	gcry_md_hash_buffer(GCRY_MD_SHA512,
+			buffer, (const void *) command, BANKING_MAX_COMMAND_LENGTH);
 
-  /* Behavior is dependent upon the status of arguments
-   * If buffer is NULL, cmd is hashed to a temporary array
-   * If buffer points to a NULL, allocate space for the hash here
-   * Otherwise, buffer is assumed to provide a reasonable buffer
-   */
-  if (buffer == NULL) {
-    temporary = malloc(len);
-    buffer = &temporary;
-  } else if (*buffer == NULL) {
-    *buffer = malloc(len);
-  }
+	/* If a digest value was given, check it */
+	if (digest) {
+		status = memcmp(buffer, digest, BANKING_MD_LENGTH);
+#ifndef NDEBUG
+		fprintf(stderr, "INFO: sha512sum('%s') ", command);
+		fprintx(stderr, "equals?", digest, BANKING_MD_LENGTH);
+		if (status) {
+			fprintf(stderr, "ERROR: hash mismatch (%i) ", status);
+			fprintx(stderr, "doesn't equal", buffer, BANKING_MD_LENGTH);
+		}
+	} else {
+		fprintf(stderr, "INFO: sha512sum('%s') ", cmd);
+		fprintx(stderr, "equals", buffer, BANKING_MD_LENGTH);
+#endif
+	}
 
-  /* Try to take the hash of the command and buffer it */
-  gcry_md_hash_buffer(GCRY_MD_SHA256,
-			*buffer, (const void *)(cmd), BANKING_MAX_COMMAND_LENGTH);
-
-  /* If a digest value was given, check it */
-  if (digest) {
-    status = strncmp((char *)(*buffer), (char *)(digest), len);
-    #ifndef NDEBUG
-    fprintf(stderr, "INFO: sha256sum('%s')", cmd);
-    fprintx(stderr, " ?", digest, len);
-    if (status) {
-      fprintf(stderr, "ERROR: hash mismatch (%i) ", status);
-      fprintx(stderr, "HASH =", *buffer, len);
-    }
-  } else {
-    fprintf(stderr, "INFO: sha256sum('%s')", cmd);
-    fprintx(stderr, " =", *buffer, len);
-    #endif
-  }
-
-  /* If a temporary buffer was allocated, release it */
-  if (temporary) {
-    free(temporary);
-  }
-  return status;
+	/* If the digest was requested, provide it */
+	if (result) {
+		memcpy(result, buffer, BANKING_MD_LENGTH);
+	}
+	return status;
 }
 
 #ifdef ENABLE_TESTING
-int
-test_crypto()
+#include <stdio.h>
+
+static inline int
+__test_symmetric(const char *str)
 {
-	char * msg;
+	char *msg;
+	key_data_t key;
+	unsigned char *digest;
 	struct buffet_t buffet;
-	unsigned char * key, * md;
 
 	msg = calloc(BANKING_MAX_COMMAND_LENGTH, sizeof(char));
-	strncpy(msg, BANKING_MSG_AUTH_CHECK, sizeof(BANKING_MSG_AUTH_CHECK));
+	strncpy(msg, str, strnlen(str, BANKING_MAX_COMMAND_LENGTH));
 
 	/* key request test */
 	print_keystore(stderr, "initial test state");
@@ -203,4 +205,12 @@ test_crypto()
 
 	return BANKING_SUCCESS;
 }
+
+int
+test_crypto(crypto_t type)
+{
+	assert(type == SYMMETRIC);
+	return __test_symmetric(BANKING_MSG_AUTH_CHECK);
+}
+
 #endif /* ENABLE_TESTING */
