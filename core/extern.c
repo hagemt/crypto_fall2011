@@ -21,6 +21,15 @@
 #define BANKING_NAME(CMD_NAME) \
 	{ #CMD_NAME, sizeof(#CMD_NAME) }
 
+#define ACCOUNT_INFO(NAME, PIN, BALANCE) \
+	{ BANKING_NAME(NAME), BANKING_NAME(PIN), BALANCE }
+
+const struct account_info_t accounts[] = {
+	ACCOUNT_INFO(Alice, BANKING_PIN_ALICE, 100),
+	ACCOUNT_INFO(Bob,   BANKING_PIN_BOB,   50),
+	ACCOUNT_INFO(Eve,   BANKING_PIN_EVE,   0)
+};
+
 /* HOWTO: add any strings you'd like to be commands/handlers below
  * TODO: separate these into source, or should configure per-executable? */
 
