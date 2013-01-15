@@ -17,7 +17,8 @@
 ##
 
 if(BUILD_ATM)
-	add_executable(atm atm.c)
+	file(GLOB BANKING_CLIENT_SOURCES "client/*.c")
+	add_executable(atm ${BANKING_CLIENT_SOURCES})
 	target_link_libraries(atm plouton)
 	install(TARGETS atm
 		RUNTIME DESTINATION bin
@@ -26,7 +27,8 @@ if(BUILD_ATM)
 endif(BUILD_ATM)
 
 if(BUILD_BANK)
-	add_executable(bank bank.c)
+	file(GLOB BANKING_SERVER_SOURCES "server/*.c")
+	add_executable(bank ${BANKING_SERVER_SOURCES})
 	target_link_libraries(bank plouton)
 	install(TARGETS bank
 		RUNTIME DESTINATION bin
@@ -35,7 +37,8 @@ if(BUILD_BANK)
 endif(BUILD_BANK)
 
 if(BUILD_PROXY)
-	add_executable(proxy proxy.c)
+	file(GLOB BANKING_RELAY_SOURCES "relay/*.c")
+	add_executable(proxy ${BANKING_RELAY_SOURCES})
 	target_link_libraries(proxy plouton)
 	install(TARGETS proxy
 		RUNTIME DESTINATION bin
