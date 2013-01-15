@@ -16,10 +16,12 @@
  * along with Plouton.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SOCKET_UTILS_H
+#ifndef BANKING_SOCKETS_H
+#define BANKING_SOCKETS_H
 #define SOCKET_UTILS_H
 
 int server_socket(const char *);
+
 int client_socket(const char *);
 
 void destroy_socket(int);
@@ -28,4 +30,4 @@ void destroy_socket(int);
 int create_socket(const char *port, struct sockaddr_in *local_addr);
 */
 
-#endif /* SOCKET_UTILS_H */
+#endif /* BANKING_SOCKETS_H */
