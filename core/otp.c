@@ -70,6 +70,8 @@ old_shmid(int *shmid)
 #define SQUARE(N) ((N) * (N))
 #define INVALID_KEY ((key_data_t) -1)
 
+extern struct key_list_t keystore;
+
 /* \brief TODO REPLACE
  * If shmid is NULL, do not use shared memory. Otherwise, access it.
  * Put the keystore's seed here if one does not already exist.

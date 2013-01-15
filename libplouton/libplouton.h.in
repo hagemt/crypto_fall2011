@@ -87,6 +87,11 @@
 /*** Core headers ***/
 
 #include "libplouton/types.h"
+
+extern const struct account_info_t accounts[3];
+extern const struct command_info_t commands[1];
+extern const struct handler_info_t handlers[1];
+
 #include "libplouton/crypto.h"
 #include "libplouton/db.h"
 #include "libplouton/shell.h"
