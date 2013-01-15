@@ -23,16 +23,18 @@
 
 typedef char *str_pos_t;
 
-/*!
- * \brief An immutable C-string with attached size (limit)
+/*! \brief An immutable C-string with attached size (limit)
+ *
+ * TODO determine if this is even a good idea?
  */
 struct sized_str_t {
 	const char *str;
 	size_t len;
 };
 
-/*!
- * \brief An account entry (for the bank DB)
+/*! \brief An account entry (for the bank DB)
+ *
+ * FIXME work out where the list is defined
  */
 struct account_info_t {
 	const struct sized_str_t name, pin;
@@ -41,7 +43,6 @@ struct account_info_t {
 
 /* TODO dummy way, bad way? */
 typedef struct thread_data_t *handler_arg_t;
-
 typedef int (*command_t)(char *);
 typedef int (*handler_t)(handler_arg_t, char *);
 
@@ -61,36 +62,21 @@ struct handler_info_t {
 	handler_t handler;
 };
 
+/*
 extern const struct account_info_t accounts[3];
 extern const struct command_info_t commands[];
 extern const struct handler_info_t handlers[];
+*/
 
-/*!
- * \brief A buffet is an array of buffers, used for encryption/decryption
+/*! \brief The type information for raw key data.
  *
- * Inside are the members pbuffer, cbuffer, and tbuffer (char[]s)
- * For convenience, cbuffer is actually an unsigned char[]
- */
-struct buffet_t {
-	char pbuffer[BANKING_MAX_COMMAND_LENGTH];
-	char tbuffer[BANKING_MAX_COMMAND_LENGTH];
-	unsigned char cbuffer[BANKING_MAX_COMMAND_LENGTH];
-};
-
-/*!
- * \brief Reset all data fields in the given buffet
- */
-void clear_buffet(struct buffet_t *);
-
-/*!
- * \brief The type information for raw key data.
+ * Note: these are raw bytes, for gcrypt
  */
 typedef unsigned char *key_data_t;
 
 #include <time.h>
 
-/*!
- * \brief Essentially a basic (raw) keystore
+/*! \brief Essentially a basic (raw) keystore
  *
  * TODO this could be much more sophisticated, for now:
  * It is merely a singly-linked list with timestamps.
@@ -101,12 +87,9 @@ struct key_list_t {
 	struct key_list_t *next;
 };
 
-/*
-extern const struct key_list_t keystore;
-*/
-
-/*!
- * \brief Holds label/key-pairs for users
+/*! \brief Holds label/key-pairs for users...
+ *
+ * TODO this count be much more sophisticated as well.
  */
 struct credential_t {
 	char buffer[BANKING_MAX_COMMAND_LENGTH];
@@ -114,11 +97,15 @@ struct credential_t {
 	key_data_t key;
 };
 
-/*!
- * \brief Specify the label for a credential's key
+/*! \brief A buffet is an array of buffers, used for encryption/decryption
  *
- * The string given should be of the specified length (checked)
+ * Inside are the members pbuffer, cbuffer, and tbuffer (char[]s)
+ * For convenience, cbuffer is actually an unsigned char[]
  */
-void set_username(struct credential_t *, char *, size_t);
+struct buffet_t {
+	char pbuffer[BANKING_MAX_COMMAND_LENGTH];
+	char tbuffer[BANKING_MAX_COMMAND_LENGTH];
+	unsigned char cbuffer[BANKING_MAX_COMMAND_LENGTH];
+};
 
 #endif /* BANKING_TYPES_H */

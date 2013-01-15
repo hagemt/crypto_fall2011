@@ -19,43 +19,51 @@
 #ifndef BANKING_CRYPTO_H
 #define BANKING_CRYPTO_H
 
-extern struct key_list_t keystore;
-
-#ifdef USING_THREADS
-#include <pthread.h>
-extern pthread_mutex_t keystore_mutex;
-#endif /* USING_THREADS */
-
-int attach_key(key_data_t *);
-
-int request_key(key_data_t *);
-int revoke_key(key_data_t *);
-
-#include <stddef.h>
-
-void set_username(struct credential_t *, char *, size_t);
-
-/* gcrypt includes */
+/* Incorporate gcrypt (has special pthread callbacks) */
 #define GCRYPT_NO_DEPRECATED
 #include <gcrypt.h>
 #ifdef USING_PTHREADS
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
-#endif
+#include <pthread.h>
+extern pthread_mutex_t keystore_mutex;
+#endif /* USING_THREADS */
+
+/* extern struct key_list_t keystore; */
+
+/* TODO: remove key attachment? */
+int attach_key(key_data_t *);
+int request_key(key_data_t *);
+int revoke_key(key_data_t *);
+
+/*! \brief Specify the label for a credential's key
+ *
+ * The string given should be of the specified length (checked)
+ */
+void set_username(struct credential_t *, char *, size_t);
+
+/*! \brief Reset all data fields in the given buffet
+ *
+ * Consider all the information lost, after termination.
+ */
+void clear_buffet(struct buffet_t *);
+
+/************************************************************************/
+
+/* TODO: remove arguments or standardize */
+int init_crypto(const int *const);
+void shutdown_crypto(const int *const);
+
+/* TODO: (re-)simplify interface? */
+void encrypt_message(struct buffet_t *, key_data_t);
+void decrypt_message(struct buffet_t *, key_data_t);
+
+#include <stddef.h>
 
 void *strong_random_bytes(size_t);
 void *secure_delete(unsigned char *, size_t);
 
-/* TODO: remove arguments or standardize */
-int init_crypto(const int * const);
-void shutdown_crypto(const int * const);
-
-/* TODO: (re-)simplify interface? */
-void encrypt_message(struct buffet_t * buffet, const void * key);
-void decrypt_message(struct buffet_t * buffet, const void * key);
-
-#include <stddef.h>
-
-ssize_t send_message(const struct buffet_t *buffet, int sock);
-ssize_t recv_message(const struct buffet_t *buffet, int sock);
+ssize_t send_message(const struct buffet_t *, int);
+ssize_t recv_message(const struct buffet_t *, int);
+void print_message(struct buffet_t *);
 
 #endif /* BANKING_CRYPTO_H */
