@@ -1,5 +1,3 @@
-
-
 /**
  * Copyright 2011 by Tor E. Hagemann <hagemt@rpi.edu>
  * This file is part of Plouton.
@@ -24,17 +22,7 @@
 #include <string.h>
 
 inline void
-clear_buffet(struct buffet_t *buffet)
-{
-	assert(buffet);
-	memset(buffet->pbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
-	memset(buffet->cbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
-	memset(buffet->tbuffer, '\0', BANKING_MAX_COMMAND_LENGTH);
-	/* FIXME should noncify instead? */
-}
-
-inline void
-encrypt_message(struct buffet_t *buffet, const void *key)
+encrypt_message(struct buffet_t *buffet, const key_data_t key)
 {
 	/* TODO handle gcry_error_t error_code's? */
 	gcry_cipher_hd_t handle;
@@ -57,7 +45,7 @@ encrypt_message(struct buffet_t *buffet, const void *key)
 }
 
 inline void
-decrypt_message(struct buffet_t *buffet, const void *key) {
+decrypt_message(struct buffet_t *buffet, const key_data_t key) {
 	/* TODO handle gcry_error_t error_code's? */
 	gcry_cipher_hd_t handle;
 	assert(buffet && key);

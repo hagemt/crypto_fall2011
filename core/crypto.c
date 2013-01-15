@@ -31,9 +31,9 @@ random_bytes(size_t len)
 }
 
 inline void *
-secure_delete(unsigned char *addr, size_t len)
+secure_delete(void *addr, size_t len)
 {
-	gcry_create_nonce(addr, len);
+	gcry_create_nonce((unsigned char *) addr, len);
 	gcry_free(addr);
 	return NULL;
 }
@@ -134,7 +134,7 @@ checksum(char *command, unsigned char *digest, unsigned char *result)
 			fprintx(stderr, "doesn't equal", buffer, BANKING_MD_LENGTH);
 		}
 	} else {
-		fprintf(stderr, "INFO: sha512sum('%s') ", cmd);
+		fprintf(stderr, "INFO: sha512sum('%s') ", command);
 		fprintx(stderr, "equals", buffer, BANKING_MD_LENGTH);
 #endif
 	}
@@ -209,7 +209,8 @@ __test_symmetric(const char *str)
 int
 test_crypto(crypto_t type)
 {
-	assert(type == SYMMETRIC);
+	assert(type == SERPENT);
+	/* only a symmetric OTP-solution is currently implemented; test it */
 	return __test_symmetric(BANKING_MSG_AUTH_CHECK);
 }
 

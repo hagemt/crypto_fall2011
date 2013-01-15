@@ -50,7 +50,7 @@ void clear_buffet(struct buffet_t *);
 /************************************************************************/
 
 enum crypto_t {
-	SYMMETRIC;
+	SERPENT
 };
 
 /* TODO: remove arguments or standardize */
@@ -61,8 +61,8 @@ int test_crypto(crypto_t);
 #endif /* ENABLE_TESTING */
 
 /* TODO: (re-)simplify interface? */
-void encrypt_message(struct buffet_t *, key_data_t);
-void decrypt_message(struct buffet_t *, key_data_t);
+void encrypt_message(struct buffet_t *, const key_data_t);
+void decrypt_message(struct buffet_t *, const key_data_t);
 
 #include <stddef.h>
 
