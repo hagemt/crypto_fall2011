@@ -52,6 +52,9 @@ void clear_buffet(struct buffet_t *);
 /* TODO: remove arguments or standardize */
 int init_crypto(const int *const);
 void shutdown_crypto(const int *const);
+#ifdef ENABLE_TESTING
+int test_crypto();
+#endif /* ENABLE_TESTING */
 
 /* TODO: (re-)simplify interface? */
 void encrypt_message(struct buffet_t *, key_data_t);
