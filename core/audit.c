@@ -18,20 +18,6 @@
 
 #include "libplouton.h"
 
-inline void *
-strong_random_bytes(size_t len)
-{
-	return gcry_random_bytes_secure(len, GCRY_STRONG_RANDOM);
-}
-
-inline void *
-secure_delete(unsigned char *addr, size_t len)
-{
-	gcry_create_nonce(addr, len);
-	gcry_free(addr);
-	return NULL;
-}
-
 /* We wrap read/write on the socket for simple auditing */
 
 #include <assert.h>
@@ -84,3 +70,12 @@ recv_message(const struct buffet_t *buffet, int sock)
 	}
 	return result;
 }
+
+inline void
+show_message(struct buffet_t *buffet)
+{
+	buffet->tbuffer[MAX_COMMAND_LENGTH - 1] = '\0';
+	printf("%s\n", buffet->tbuffer);
+	clear_buffet(buffet);
+}
+
